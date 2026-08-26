@@ -1,0 +1,44 @@
+{
+  "subPages": {
+    "juliang": {
+      "label": "巨量百应",
+      "defaultUrl": "https://buyin.jinritemai.com/dashboard",
+      "refreshInterval": 300
+    },
+    "daping": {
+      "label": "直播大屏",
+      "defaultUrlTemplate": "https://compass.jinritemai.com/screen/live/talent?live_room_id={roomId}",
+      "refreshInterval": 60
+    },
+    "report": {
+      "label": "直播日报",
+      "kind": "report",
+      "refreshInterval": 0
+    },
+    "privateMsg": {
+      "label": "后台私信",
+      "defaultUrl": "https://www.douyin.com/jingxuan",
+      "refreshInterval": 0
+    },
+    "doc": {
+      "label": "文档",
+      "defaultUrl": "",
+      "refreshInterval": 0
+    }
+  },
+  "layout": {
+    "sidebarWidth": 120,
+    "tabBarHeight": 40
+  },
+  "urlWhitelist": [
+    "buyin.jinritemai.com",
+    "compass.jinritemai.com",
+    "www.douyin.com",
+    "jinritemai.com"
+  ],
+  "authCallbackSchemes": ["myapp://callback", "http://127.0.0.1:0/callback"],
+  "keepAliveMax": 2,
+  "viewPoolSize": 2,
+  "preloadDelayMs": 5000,
+  "tokenExchangeEndpoint": "https://buyin.jinritemai.com/oauth/token"
+}

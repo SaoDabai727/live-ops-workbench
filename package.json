@@ -1,0 +1,56 @@
+{
+  "name": "live-ops-workbench",
+  "version": "1.4.0",
+  "description": "直播运营助手 - 多直播间监控与日报生成一体工作台",
+  "main": "main/index.js",
+  "author": "",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win --x64",
+    "build:portable": "electron-builder --win portable",
+    "build:dir": "electron-builder --win --dir",
+    "test-regex": "node test/regex-test.js test/sample-compass.txt",
+    "test-regex:douyin": "node test/regex-test.js test/sample-douyin.txt"
+  },
+  "build": {
+    "appId": "com.liveops.workbench",
+    "productName": "直播运营助手",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main/**/*",
+      "renderer/**/*",
+      "config/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "icon": null
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "直播运营助手",
+      "installerSidebar": null
+    },
+    "extraMetadata": {
+      "main": "main/index.js"
+    },
+    "asar": true,
+    "asarUnpack": [
+      "config/*.json"
+    ]
+  },
+  "dependencies": {
+    "ws": "^8.21.1"
+  },
+  "devDependencies": {
+    "electron": "^28.3.3",
+    "electron-builder": "^24.0.0"
+  }
+}

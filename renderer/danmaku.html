@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<title>弹幕</title>
+<style>
+:root {
+  --bg: #080D16; --surface: #0F1623; --surface-2: #1A2335;
+  --cyan: #00E5C0; --text: #E2E8F0; --muted: #94A3B8; --border: #1A2638; --danger: #EF4444;
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+body {
+  font-family: system-ui, 'Microsoft YaHei', sans-serif;
+  background: var(--bg); color: var(--text);
+  height: 100vh; display: flex; flex-direction: column;
+  -webkit-font-smoothing: antialiased; overflow: hidden;
+}
+.header {
+  display: flex; align-items: center;
+  padding: 8px 12px; background: var(--surface-2);
+  border-bottom: 1px solid var(--border); gap: 8px;
+}
+.header .title { font-size: 13px; font-weight: 700; color: var(--cyan); flex: 1; }
+.header button {
+  padding: 3px 10px; border: 1px solid var(--border); border-radius: 4px;
+  background: transparent; color: var(--muted); font-size: 11px; cursor: pointer;
+}
+.header button:hover { border-color: var(--danger); color: var(--danger); }
+.list { flex: 1; overflow-y: auto; padding: 4px 0; }
+.list::-webkit-scrollbar { width: 3px; }
+.list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.empty { padding: 24px 12px; text-align: center; font-size: 12px; color: var(--muted); }
+.item {
+  padding: 5px 12px; font-size: 12px; line-height: 1.6;
+  border-bottom: 1px solid var(--border); animation: newIn .3s ease;
+}
+@keyframes newIn { from { background: rgba(0,229,192,0.15); } to { background: transparent; } }
+.nick { color: var(--cyan); font-weight: 600; }
+.content { color: var(--text); }
+.time { color: var(--muted); font-size: 10px; float: right; margin-top: 1px; }
+</style>
+</head>
+<body>
+<div class="header">
+  <span class="title" id="title">弹幕</span>
+  <button id="btn-clear">清除</button>
+</div>
+<div class="list" id="list">
+  <div class="empty" id="empty">等待弹幕数据...</div>
+</div>
+</body>
+</html>

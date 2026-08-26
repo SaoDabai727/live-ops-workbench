@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<title>直播间管理</title>
+<style>
+:root {
+  --bg: #080D16; --surface: #0F1623; --surface-2: #1A2335; --surface-3: #253149;
+  --cyan: #00E5C0; --cyan-glow: rgba(0,229,192,0.2); --cyan-dim: rgba(0,229,192,0.06);
+  --text: #E2E8F0; --muted: #94A3B8; --border: #1A2638; --danger: #EF4444; --ok: #22C55E;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  background: var(--bg); color: var(--text);
+  height: 100vh; display: flex; flex-direction: column; padding: 16px;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+.header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.header h2 { font-size: 15px; font-weight: 700; color: var(--cyan); }
+.room-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 4px; }
+.room-list::-webkit-scrollbar { width: 4px; }
+.room-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* 房间卡片 */
+.room-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 14px; transition: border-color .2s;
+}
+.room-card:hover { border-color: var(--cyan); box-shadow: 0 0 12px rgba(0,229,192,0.06); }
+.card-header {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+}
+.card-num { font-size: 12px; color: var(--muted); width: 22px; font-weight: 600; }
+.card-header input {
+  padding: 6px 10px; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text); font-size: 13px; outline: none; transition: border-color .2s;
+}
+.card-header input:focus { border-color: var(--cyan); box-shadow: 0 0 8px rgba(0,229,192,0.12); }
+.card-header .input-name { flex: 1; }
+.card-header .input-id { width: 130px; flex: none; }
+.card-del {
+  background: none; border: none; font-size: 16px; cursor: pointer;
+  color: var(--muted); padding: 2px 8px; border-radius: 4px; transition: all .15s;
+  flex: none; margin-left: auto;
+}
+.card-del:hover { background: var(--danger); color: #fff; }
+
+/* 自动日报开关 */
+.switch-label { display: inline-block; position: relative; width: 36px; height: 20px; cursor: pointer; }
+.switch-label input { display: none; }
+.switch-track {
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+  background: var(--border); border-radius: 10px; transition: .2s;
+}
+.switch-track::after {
+  content: ''; position: absolute; top: 2px; left: 2px;
+  width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: .2s;
+}
+.switch-label input:checked + .switch-track { background: var(--cyan); }
+.switch-label input:checked + .switch-track::after { transform: translateX(16px); }
+
+/* 字段行 */
+.card-fields { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+.field { display: flex; flex-direction: column; gap: 3px; }
+.field-label { font-size: 10px; color: var(--muted); font-weight: 600; letter-spacing: .5px; text-transform: uppercase; }
+.field input, .field textarea {
+  padding: 5px 8px; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 5px; color: var(--text); font-size: 12px; outline: none; transition: border-color .2s;
+}
+.field input:focus, .field textarea:focus { border-color: var(--cyan); }
+.field.duration input { width: 72px; }
+.field.profile { flex: 1; min-width: 180px; }
+.field.profile textarea { resize: vertical; min-height: 34px; }
+
+/* 主播列表 */
+.anchor-section { border-top: 1px solid var(--border); padding-top: 10px; }
+.anchor-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.anchor-header .section-label { font-size: 10px; color: var(--muted); font-weight: 600; letter-spacing: .5px; text-transform: uppercase; }
+.btn-add-anchor {
+  padding: 3px 12px; border: 1px solid var(--cyan); border-radius: 14px;
+  background: rgba(0,229,192,0.08); color: var(--cyan); font-size: 11px; cursor: pointer;
+  transition: all .15s; font-weight: 600;
+}
+.btn-add-anchor:hover { background: rgba(0,229,192,0.18); box-shadow: 0 0 10px rgba(0,229,192,0.15); }
+
+.anchor-list { display: flex; flex-direction: column; gap: 4px; }
+.anchor-row {
+  display: flex; align-items: center; gap: 8px; padding: 4px 8px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+  transition: border-color .15s;
+}
+.anchor-row:hover { border-color: var(--border-light); }
+.anchor-row input {
+  flex: 1; padding: 4px 8px; background: transparent; border: none; border-bottom: 1px solid transparent;
+  color: var(--text); font-size: 12px; outline: none; transition: border-color .15s;
+}
+.anchor-row input:focus { border-bottom-color: var(--cyan); }
+.anchor-row .anchor-order { font-size: 10px; color: var(--muted); width: 18px; text-align: center; }
+.anchor-toggle {
+  width: 36px; height: 20px; border-radius: 10px; border: none; cursor: pointer;
+  background: var(--border); position: relative; transition: background .2s; flex: none;
+}
+.anchor-toggle.enabled { background: var(--cyan); }
+.anchor-toggle::after {
+  content: ''; position: absolute; top: 2px; left: 2px;
+  width: 16px; height: 16px; border-radius: 50%; background: #fff;
+  transition: transform .2s;
+}
+.anchor-toggle.enabled::after { transform: translateX(16px); }
+.anchor-del {
+  background: none; border: none; font-size: 14px; cursor: pointer;
+  color: var(--muted); padding: 0 4px; border-radius: 3px; transition: all .15s; flex: none;
+}
+.anchor-del:hover { color: var(--danger); background: rgba(239,68,68,0.12); }
+
+/* 底部 */
+.footer { margin-top: 10px; display: flex; gap: 8px; justify-content: space-between; align-items: center; }
+.footer button {
+  padding: 7px 16px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px;
+  cursor: pointer; transition: all .2s; background: var(--surface-2); color: var(--text); font-weight: 500;
+}
+.footer button:hover { border-color: var(--cyan); }
+.actions { display: flex; gap: 8px; }
+.actions .save { background: rgba(0,229,192,0.12); border-color: var(--cyan); color: var(--cyan); }
+.actions .save:hover { background: rgba(0,229,192,0.22); box-shadow: 0 0 14px rgba(0,229,192,0.15); }
+</style>
+</head>
+<body>
+<div class="header">
+  <h2>直播间管理</h2>
+</div>
+<div id="room-list" class="room-list"></div>
+<div class="footer">
+  <button id="btn-add">＋ 添加直播间</button>
+  <div class="actions">
+    <button id="btn-cancel">取消</button>
+    <button id="btn-save" class="save">保存</button>
+  </div>
+</div>
+</body>
+</html>

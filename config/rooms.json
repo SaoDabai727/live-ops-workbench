@@ -1,0 +1,71 @@
+{
+  "version": "2.0",
+  "liveRooms": [
+    {
+      "id": "live1",
+      "label": "美的燃热",
+      "roomId": "123456",
+      "anchors": [
+        {
+          "name": "小花",
+          "enabled": true
+        },
+        {
+          "name": "小雨",
+          "enabled": true
+        },
+        {
+          "name": "月牙",
+          "enabled": true
+        }
+      ],
+      "userProfileText": "男61%\n25-30岁28%\n河南10%\n手机价格:2000-399934%\n新锐白领28%",
+      "liveDuration": "15h",
+      "dailyUrl": "https://compass.jinritemai.com/screen/live/talent?live_room_id=7661440878568803091&live_app_id=1128&source=baiying_home"
+    },
+    {
+      "id": "live2",
+      "label": "Midea美的油烟机官方旗舰店",
+      "roomId": "789012",
+      "anchors": [
+        {
+          "name": "小花",
+          "enabled": true
+        },
+        {
+          "name": "小雨",
+          "enabled": true
+        },
+        {
+          "name": "月牙",
+          "enabled": true
+        }
+      ],
+      "userProfileText": "男59%\n25-30岁25%\n河南10%\n手机价格:2000-399935%\n新锐白领28%",
+      "liveDuration": "15h",
+      "dailyUrl": "https://compass.jinritemai.com/screen/live/talent?live_room_id=7661811119568554758"
+    },
+    {
+      "id": "live3",
+      "label": "小天鹅洗衣机",
+      "roomId": "345678",
+      "anchors": [
+        {
+          "name": "小花",
+          "enabled": true
+        },
+        {
+          "name": "小雨",
+          "enabled": true
+        },
+        {
+          "name": "月牙",
+          "enabled": true
+        }
+      ],
+      "userProfileText": "男68%\n31-35岁28%\n河南12%\n手机价格:4000-699934%\n新锐白领34%",
+      "liveDuration": "15h",
+      "dailyUrl": "https://compass.jinritemai.com/screen/live/talent?live_room_id=7660848591182908166"
+    }
+  ]
+}

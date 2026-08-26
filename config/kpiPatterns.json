@@ -1,0 +1,19 @@
+{
+  "comment": "KPI 抓取标签正则（v7 整页 innerText 策略，结构无关）。迁移自 A 的 scraper/translator.py _extract_kpis。",
+  "scrape_regex": {
+    "gmv": "直播间成交金额\\s*[¥￥]?\\s*([\\d,]+\\.?\\d*\\s*[万亿]?)",
+    "refund": "退款金额\\s*[¥￥]?\\s*([\\d,]+\\.?\\d*\\s*[万亿]?)",
+    "gsv": "(?:实际成交|销售总额)\\s*[¥￥]?\\s*([\\d,]+\\.?\\d*\\s*[万亿]?)",
+    "exposure_total": "曝光次数\\s*([\\d,]+\\.?\\d*\\s*[万亿]?)",
+    "cumulative_viewers": "累计观看人数\\s*([\\d,]+\\.?\\d*\\s*[万亿]?)",
+    "avg_watch_duration": "人均观看时长\\s*(\\d+分(?:钟)?\\d+秒|\\d+秒|\\d+分(?:钟)?)",
+    "exposure_view_rate": "曝光[—\\-]观看率[^\\d%]*([\\d.]+%)",
+    "interaction_rate": "观看[—\\-]互动率[^\\d%]*([\\d.]+%)",
+    "product_click_rate": "商品点击[—\\-]成交率[^\\d%]*([\\d.]+%)",
+    "follow_rate": "观看[—\\-]关注率[^\\d%]*([\\d.]+%)",
+    "room_name": "([\\u4e00-\\u9fa5]{2,30}(?:官方|旗舰)?直播间)"
+  },
+  "profile_regex": {
+    "tag_format": "([\\d\\u4e00-\\u9fa5a-zA-Z][\\u4e00-\\u9fa5a-zA-Z0-9:\\-]*?)\\s*(\\d+(?:\\.\\d+)?%)"
+  }
+}

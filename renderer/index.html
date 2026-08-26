@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' http://127.0.0.1:*; style-src 'self' 'unsafe-inline'; script-src 'self'">
+  <link rel="stylesheet" href="styles.css">
+  <title>直播运营助手 V1.40</title>
+</head>
+<body>
+  <div id="toolbar">
+    <span class="title">直播运营助手 V1.40</span>
+    <span class="spacer"></span>
+    <button id="btn-danmaku" title="弹幕面板">💬 弹幕</button>
+    <button id="btn-quick-report" title="快速生成日报" class="primary">📋 日报</button>
+    <button id="btn-refresh" title="刷新当前页">刷新</button>
+    <button id="btn-pause" title="暂停/恢复自动刷新">暂停刷新</button>
+    <button id="btn-reset" title="复位到默认页">复位默认页</button>
+    <button id="btn-manage" title="管理直播间">📺 管理</button>
+    <span id="report-cd" class="report-cd"></span>
+    <span id="net-status" class="net online">网络正常</span>
+    <div id="toast-container"></div>
+  </div>
+  <div id="loading-bar" class="loading-bar"></div>
+  <div id="body">
+    <div id="sidebar"></div>
+    <div id="main">
+      <div id="tabbar"></div>
+      <!-- 文档链接弹窗（初次点击"文档"时显示） -->
+      <div id="url-modal" class="modal-overlay" style="display:none">
+        <div class="modal-box">
+          <p class="modal-title">设置文档链接</p>
+          <p class="modal-hint">请输入你的飞书文档链接</p>
+          <input id="url-input" class="modal-input" type="text" placeholder="https://your-doc.feishu.cn/..." />
+          <div class="modal-actions">
+            <button id="btn-url-save" class="modal-btn primary">保存</button>
+            <button id="btn-url-cancel" class="modal-btn">取消</button>
+          </div>
+        </div>
+      </div>
+      <!-- 内容区由主进程 BrowserView 覆盖（x=sidebarWidth, y=toolbar+tabBar） -->
+      <!-- 日报面板（report 子页时显示） -->
+      <div id="report-panel" style="display:none">
+        <div class="report-toolbar">
+          <span class="report-title">直播日报</span>
+          <div class="report-actions">
+            <button id="btn-scrape-report" class="report-btn primary">生成日报</button>
+            <button id="btn-scrape-profile" class="report-btn">📊 抓取画像</button>
+            <button id="btn-copy-report" class="report-btn">复制</button>
+            <button id="btn-save-report" class="report-btn">保存历史</button>
+          </div>
+        </div>
+        <textarea id="report-editor" class="report-editor" placeholder="点击「生成日报」，自动抓取 KPI + 用户画像..."></textarea>
+        <div id="report-status" class="report-status"></div>
+      </div>
+    </div>
+  </div>
+  <script src="renderer.js"></script>
+</body>
+</html>

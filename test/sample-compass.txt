@@ -1,0 +1,11 @@
+请把 compass 直播大屏页面的文本粘贴到此处，然后运行：
+  node test/regex-test.js test/sample-compass.txt
+
+获取方式：
+  1. npm start 启动直播运营助手
+  2. 点击任一房间 → 切换到「直播大屏」子页
+  3. 确认页面加载完成（能看到数据）
+  4. 按 F12 打开 DevTools → Console 标签
+  5. 输入: document.body.innerText
+  6. 复制输出的全部文本，粘贴到本文件（覆盖此说明）
+  7. 运行 node test/regex-test.js test/sample-compass.txt

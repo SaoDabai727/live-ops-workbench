@@ -1,0 +1,237 @@
+// config.js — 统一配置层（移植自 A 的 config/ + B 的 config.js）
+// 数据根：%APPDATA%/live-ops-workbench/config/
+// 含：路径解析、配置读写、旧 A/B 配置迁移
+const fs = require('fs');
+const path = require('path');
+const { app } = require('electron');
+
+// ====== 路径 ======
+const IS_PACKAGED = app && app.isPackaged;
+
+function configDir() {
+  if (IS_PACKAGED) {
+    return path.join(app.getPath('userData'), 'config');
+  }
+  return path.join(__dirname, '..', 'config');
+}
+
+function reportsDir() {
+  const base = IS_PACKAGED ? app.getPath('userData') : path.join(__dirname, '..');
+  return path.join(base, 'reports');
+}
+
+function logsDir() {
+  const base = IS_PACKAGED ? app.getPath('userData') : path.join(__dirname, '..');
+  return path.join(base, 'logs');
+}
+
+function ensureDir(dir) {
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+}
+
+function loadJson(p) {
+  if (!fs.existsSync(p)) return null;
+  return JSON.parse(fs.readFileSync(p, 'utf-8'));
+}
+
+function saveJson(p, data) {
+  ensureDir(path.dirname(p));
+  fs.writeFileSync(p, JSON.stringify(data, null, 2), 'utf-8');
+}
+
+// ====== 配置加载 ======
+function initConfig() {
+  const userDir = configDir();
+  const srcDir = path.join(__dirname, '..', 'config');
+  ensureDir(userDir);
+  ['rooms.json', 'subPages.json', 'kpiPatterns.json', 'customUrls.json'].forEach(f => {
+    const dest = path.join(userDir, f);
+    if (!fs.existsSync(dest)) {
+      const src = path.join(srcDir, f);
+      if (fs.existsSync(src)) fs.copyFileSync(src, dest);
+    }
+  });
+}
+
+// ------ 迁移旧 A/B 配置（首次运行时执行）------
+const MIGRATION_FLAG = path.join(configDir(), '.migration_done');
+
+function migrateOldConfigs() {
+  if (fs.existsSync(MIGRATION_FLAG)) return; // 已迁移过
+
+  const appdata = process.env.APPDATA || '';
+  const oldAPath = path.join(appdata, 'BlackEggAssistant', 'config.json');
+  const oldBPath = path.join(appdata, 'juliang-workbench', 'config');
+  const newRoomsPath = path.join(configDir(), 'rooms.json');
+
+  const rooms = loadJson(newRoomsPath) || { version: '2.0', liveRooms: [] };
+
+  // 迁移 A 的配置（日报助手房间 → 注入 anchors/profile/duration）
+  const oldA = loadJson(oldAPath);
+  if (oldA && oldA.rooms) {
+    Object.entries(oldA.rooms).forEach(([name, acfg], idx) => {
+      // 匹配：按索引顺序或 label 模糊匹配
+      const target = rooms.liveRooms[idx] || null;
+      if (target) {
+        target.anchors = acfg.anchors || target.anchors || [];
+        target.userProfileText = acfg.user_profile_text || target.userProfileText || '';
+        target.liveDuration = acfg.live_duration || target.liveDuration || '15h';
+        if (acfg.daily_url) target.dailyUrl = acfg.daily_url;
+      }
+    });
+
+    // 迁移 A 的历史日报
+    const oldHistoryDir = path.join(appdata, 'BlackEggAssistant', 'history');
+    if (fs.existsSync(oldHistoryDir)) {
+      const entries = fs.readdirSync(oldHistoryDir, { withFileTypes: true });
+      entries.forEach(entry => {
+        if (entry.isDirectory()) {
+          const roomIdx = rooms.liveRooms.findIndex(r =>
+            r.label && r.label.includes(entry.name)
+          );
+          const targetId = roomIdx >= 0 ? rooms.liveRooms[roomIdx].id : entry.name;
+          const destDir = path.join(reportsDir(), targetId);
+          ensureDir(destDir);
+          const srcDir = path.join(oldHistoryDir, entry.name);
+          if (fs.existsSync(srcDir)) {
+            fs.readdirSync(srcDir).forEach(f => {
+              if (f.endsWith('.txt')) {
+                fs.copyFileSync(path.join(srcDir, f), path.join(destDir, f));
+              }
+            });
+          }
+        }
+      });
+    }
+  }
+
+  // 迁移 B 的旧配置（liveRooms）
+  const oldBRooms = loadJson(path.join(oldBPath, 'rooms.json'));
+  if (oldBRooms && oldBRooms.liveRooms) {
+    oldBRooms.liveRooms.forEach(bRoom => {
+      const exists = rooms.liveRooms.find(r => r.id === bRoom.id);
+      if (!exists) rooms.liveRooms.push(bRoom);
+    });
+  }
+
+  rooms.version = '2.0';
+  saveJson(newRoomsPath, rooms);
+  // 迁移完成标记
+  fs.writeFileSync(MIGRATION_FLAG, Date.now().toString(), 'utf-8');
+}
+
+// ====== 主配置对象 ======
+initConfig();
+migrateOldConfigs();
+
+const roomsCfg = loadJson(path.join(configDir(), 'rooms.json')) || { liveRooms: [] };
+const subCfg = loadJson(path.join(configDir(), 'subPages.json')) || {};
+const kpiCfg = loadJson(path.join(configDir(), 'kpiPatterns.json')) || {};
+
+const config = {
+  liveRooms: roomsCfg.liveRooms || [],
+  subPages: subCfg.subPages || {},
+  layout: subCfg.layout || { sidebarWidth: 120, tabBarHeight: 40 },
+  urlWhitelist: subCfg.urlWhitelist || [],
+  authCallbackSchemes: subCfg.authCallbackSchemes || ['myapp://callback'],
+  keepAliveMax: subCfg.keepAliveMax || 2,
+  viewPoolSize: subCfg.viewPoolSize || 2,
+  preloadDelayMs: subCfg.preloadDelayMs || 5000,
+  tokenExchangeEndpoint: subCfg.tokenExchangeEndpoint || '',
+  kpiPatterns: kpiCfg || {}
+};
+
+// ====== 辅助函数（保留 B 原有接口） ======
+const CUSTOM_URLS_PATH = path.join(configDir(), 'customUrls.json');
+
+function loadCustomUrls() {
+  try { return JSON.parse(fs.readFileSync(CUSTOM_URLS_PATH, 'utf-8')); }
+  catch { return {}; }
+}
+
+function saveCustomUrls(data) {
+  fs.writeFileSync(CUSTOM_URLS_PATH, JSON.stringify(data, null, 2), 'utf-8');
+}
+
+function getSubPageConfig(subPage) { return config.subPages[subPage]; }
+
+function getDefaultUrl(roomId, subPage) {
+  const custom = loadCustomUrls();
+  const customKey = `${roomId}_${subPage}`;
+  if (custom[customKey]) return custom[customKey];
+
+  // report 子页不加载 URL
+  const sp = config.subPages[subPage];
+  if (!sp || sp.kind === 'report') return 'about:blank';
+  if (sp.defaultUrlTemplate) {
+    const room = config.liveRooms.find(r => r.id === roomId);
+    return sp.defaultUrlTemplate.replace('{roomId}', room ? room.roomId : roomId);
+  }
+  return sp.defaultUrl || 'about:blank';
+}
+
+function isUrlAllowed(url) {
+  if (!config.urlWhitelist || config.urlWhitelist.length === 0) return true;
+  try {
+    const host = new URL(url).host;
+    return config.urlWhitelist.some(d => host === d || host.endsWith('.' + d));
+  } catch { return false; }
+}
+
+// ------ 房间配置读写 ------
+const ROOMS_PATH = path.join(configDir(), 'rooms.json');
+
+function loadRooms() {
+  try { return JSON.parse(fs.readFileSync(ROOMS_PATH, 'utf-8')).liveRooms || []; }
+  catch { return config.liveRooms || []; }
+}
+
+function saveRooms(liveRooms) {
+  saveJson(ROOMS_PATH, { version: '2.0', liveRooms });
+  config.liveRooms = liveRooms;
+}
+
+// ------ 导航状态持久化 ------
+const NAV_STATE_PATH = path.join(configDir(), 'navigationState.json');
+
+function loadNavState() {
+  try { return JSON.parse(fs.readFileSync(NAV_STATE_PATH, 'utf-8')); }
+  catch { return {}; }
+}
+
+function saveNavState(state) {
+  ensureDir(configDir());
+  fs.writeFileSync(NAV_STATE_PATH, JSON.stringify(state, null, 2), 'utf-8');
+}
+
+// ------ 日报保存 ------
+function saveReport(roomId, reportText) {
+  const date = new Date().toISOString().slice(0, 10);
+  const dir = path.join(reportsDir(), roomId);
+  ensureDir(dir);
+  fs.writeFileSync(path.join(dir, date + '.txt'), reportText, 'utf-8');
+  // 同时保存 last_report 用于恢复
+  ensureDir(logsDir());
+  fs.writeFileSync(path.join(logsDir(), 'last_report_' + roomId + '.txt'), reportText, 'utf-8');
+}
+
+function loadLastReport(roomId) {
+  const p = path.join(logsDir(), 'last_report_' + roomId + '.txt');
+  try { return fs.readFileSync(p, 'utf-8'); }
+  catch { return ''; }
+}
+
+function reportDir(roomId) {
+  const dir = path.join(reportsDir(), roomId);
+  ensureDir(dir);
+  return dir;
+}
+
+module.exports = {
+  config, configDir, reportsDir, logsDir,
+  getSubPageConfig, getDefaultUrl, isUrlAllowed,
+  loadCustomUrls, saveCustomUrls,
+  loadRooms, saveRooms,
+  loadNavState, saveNavState,
+  saveReport, loadLastReport, reportDir
+};
