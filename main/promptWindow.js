@@ -20,6 +20,8 @@ function createPromptWindow({
     maximizable: false,
     title,
     autoHideMenuBar: true,
+    icon: path.join(__dirname, '..', 'build', 'icon.ico'),
+    backgroundColor: '#080D16',
     webPreferences: {
       preload: path.join(__dirname, '..', 'renderer', 'prompt.js'),
       contextIsolation: true,

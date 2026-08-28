@@ -1,6 +1,6 @@
 {
   "name": "live-ops-workbench",
-  "version": "1.5.4",
+  "version": "1.5.5",
   "description": "直播运营助手 - 多直播间监控与日报生成一体工作台",
   "main": "main/index.js",
   "author": "",
@@ -23,6 +23,8 @@
       "main/**/*",
       "renderer/**/*",
       "config/**/*",
+      "build/icon.ico",
+      "build/icon.png",
       "package.json"
     ],
     "artifactName": "live-ops-workbench-${version}-${os}-${arch}.${ext}",
@@ -41,13 +43,15 @@
           ]
         }
       ],
-      "icon": null,
+      "icon": "build/icon.ico",
       "signAndEditExecutable": false
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "shortcutName": "直播运营助手",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
       "installerSidebar": null,
       "differentialPackage": true,
       "artifactName": "live-ops-workbench-Setup-${version}.${ext}"
@@ -76,6 +80,8 @@
   },
   "devDependencies": {
     "electron": "^28.3.3",
-    "electron-builder": "^24.0.0"
+    "electron-builder": "^24.0.0",
+    "png-to-ico": "^3.0.2",
+    "sharp": "^0.35.4"
   }
 }

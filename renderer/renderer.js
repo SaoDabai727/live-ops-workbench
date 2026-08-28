@@ -66,10 +66,18 @@
 
   function renderSidebar() {
     sidebar.innerHTML = '';
+    const head = document.createElement('div');
+    head.className = 'sidebar-head';
+    head.innerHTML = '<span class="sidebar-label">直播间</span><span class="sidebar-count">' + state.liveRooms.length + '</span>';
+    sidebar.appendChild(head);
+
     state.liveRooms.forEach(room => {
       const el = document.createElement('div');
       el.className = 'room-item' + (room.id === state.currentRoomId ? ' active' : '');
-      el.textContent = room.label;
+      const name = document.createElement('span');
+      name.className = 'room-name';
+      name.textContent = room.label;
+      el.appendChild(name);
       const cnt = msgCounts[room.id] || 0;
       if (cnt > 0) {
         const badge = document.createElement('span');
@@ -486,6 +494,11 @@
     ro.observe(document.documentElement);
   }
   window.addEventListener('resize', scheduleLayoutReport);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', scheduleLayoutReport);
+    window.visualViewport.addEventListener('scroll', scheduleLayoutReport);
+  }
+  if (api.onLayoutSync) api.onLayoutSync(scheduleLayoutReport);
   api.onStateUpdate(() => scheduleLayoutReport());
   [0, 50, 150, 400, 1000].forEach((ms) => setTimeout(reportLayoutBounds, ms));
 })();

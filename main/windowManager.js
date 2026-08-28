@@ -13,6 +13,7 @@ const { generateReport, scrapeProfile } = require('./reportManager');
 const { createReportScheduler } = require('./reportScheduler');
 const { clipboard } = require('electron');
 const debugLog = require('./debugLog');
+const { cssRectToViewBounds } = require('./layoutBounds');
 
 function createWindowManager({ mainWindow }) {
   // 运行时状态（设计文档 3.3）
@@ -125,22 +126,42 @@ function createWindowManager({ mainWindow }) {
     }
   }
 
-  // BrowserView 可视区域：优先用渲染进程实测槽位，回退用内容区尺寸
-  let measuredBounds = null;
+  // BrowserView 可视区域：优先用渲染进程实测槽位（CSS px），按 shell zoom 转成 DIP
+  let measuredCssRect = null;
+  function shellZoom() {
+    try {
+      const z = mainWindow.webContents.getZoomFactor();
+      return Number.isFinite(z) && z > 0 ? z : 1;
+    } catch (e) {
+      return 1;
+    }
+  }
   function bounds() {
-    if (measuredBounds && measuredBounds.width > 0 && measuredBounds.height > 0) {
-      return { ...measuredBounds };
+    const z = shellZoom();
+    if (measuredCssRect && measuredCssRect.width > 0 && measuredCssRect.height > 0) {
+      return cssRectToViewBounds(measuredCssRect, z);
     }
     const b = mainWindow.getContentBounds();
-    const sidebarW = config.layout.sidebarWidth || 128;
-    const toolbarH = config.layout.toolbarHeight || 42;
-    const tabH = config.layout.tabBarHeight || 40;
+    const sidebarW = (config.layout.sidebarWidth || 128) * z;
+    const toolbarH = (config.layout.toolbarHeight || 42) * z;
+    const tabH = (config.layout.tabBarHeight || 40) * z;
     return {
-      x: sidebarW,
-      y: toolbarH + tabH,
-      width: Math.max(0, b.width - sidebarW),
-      height: Math.max(0, b.height - toolbarH - tabH)
+      x: Math.round(sidebarW),
+      y: Math.round(toolbarH + tabH),
+      width: Math.max(0, Math.round(b.width - sidebarW)),
+      height: Math.max(0, Math.round(b.height - toolbarH - tabH))
     };
+  }
+
+  function syncViewZoom(view) {
+    const z = shellZoom();
+    const target = view || factory.getCurrentView();
+    if (!target || target.webContents.isDestroyed()) return;
+    try {
+      if (Math.abs(target.webContents.getZoomFactor() - z) > 0.001) {
+        target.webContents.setZoomFactor(z);
+      }
+    } catch (e) {}
   }
 
   function applyViewBounds() {
@@ -153,6 +174,7 @@ function createWindowManager({ mainWindow }) {
     try {
       // 不用 setAutoResize：它按整窗增量缩放，会与侧栏/工具栏布局错位
       v.setAutoResize({ width: false, height: false, horizontal: false, vertical: false });
+      syncViewZoom(v);
       v.setBounds(b);
     } catch (e) {}
   }
@@ -199,6 +221,7 @@ function createWindowManager({ mainWindow }) {
     view.setBounds(bounds());
     try {
       view.setAutoResize({ width: false, height: false, horizontal: false, vertical: false });
+      syncViewZoom(view);
     } catch (e) {}
     mainWindow.addBrowserView(view);
     // addBrowserView 后再设一次，避免初始尺寸被覆盖
@@ -271,16 +294,14 @@ function createWindowManager({ mainWindow }) {
     ipcMain.on('switch-room', (e, roomId) => showView(roomId, appState.currentSubPage));
     ipcMain.on('layout-bounds', (e, rect) => {
       if (!rect || typeof rect !== 'object') return;
-      const x = Math.round(Number(rect.x) || 0);
-      const y = Math.round(Number(rect.y) || 0);
-      const width = Math.max(0, Math.round(Number(rect.width) || 0));
-      const height = Math.max(0, Math.round(Number(rect.height) || 0));
+      const x = Number(rect.x) || 0;
+      const y = Number(rect.y) || 0;
+      const width = Number(rect.width) || 0;
+      const height = Number(rect.height) || 0;
       if (width < 1 || height < 1) return;
-      const prev = measuredBounds;
-      measuredBounds = { x, y, width, height };
-      if (!prev || prev.x !== x || prev.y !== y || prev.width !== width || prev.height !== height) {
-        applyViewBounds();
-      }
+      measuredCssRect = { x, y, width, height };
+      // 始终重算：CSS 槽位或壳层 zoom（视图放大/缩小）任一变化都需同步
+      applyViewBounds();
     });
     ipcMain.on('switch-subpage', (e, subPage) => {
       showView(appState.currentRoomId, subPage);
@@ -444,6 +465,13 @@ function createWindowManager({ mainWindow }) {
     applyViewBounds();
   }
 
+  function syncLayout() {
+    onResize();
+    try {
+      mainWindow.webContents.send('layout-sync');
+    } catch (e) {}
+  }
+
   function init() {
     registerIpc();
     mainWindow.on('resize', onResize);
@@ -458,6 +486,11 @@ function createWindowManager({ mainWindow }) {
       setTimeout(onResize, 50);
       setTimeout(onResize, 300);
     });
+    // 视图菜单 / Ctrl± 缩放：同步 BrowserView 尺寸与页面缩放
+    mainWindow.webContents.on('zoom-changed', () => {
+      setTimeout(syncLayout, 0);
+      setTimeout(syncLayout, 50);
+    });
     showView(appState.currentRoomId, appState.currentSubPage);
     scheduler.start();
   }
@@ -469,7 +502,7 @@ function createWindowManager({ mainWindow }) {
     Object.keys(keepAliveSet).forEach(k => keepAliveSet.delete(k));
   }
 
-  return { init, appState, dispose };
+  return { init, appState, dispose, syncLayout };
 }
 
 module.exports = { createWindowManager };

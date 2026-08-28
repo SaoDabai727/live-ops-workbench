@@ -16,6 +16,7 @@ function createRoomManagerWindow({ mainWindow, rooms, onSave }) {
     autoHideMenuBar: true,
     useContentSize: true,
     backgroundColor: '#0A0E1A',
+    icon: path.join(__dirname, '..', 'build', 'icon.ico'),
     webPreferences: {
       preload: path.join(__dirname, '..', 'renderer', 'room-mgr.js'),
       contextIsolation: true,

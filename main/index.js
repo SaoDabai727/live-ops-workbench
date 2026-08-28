@@ -13,7 +13,21 @@ let mainWindow = null;
 let windowManager = null;
 let updater = null;
 
+function bumpZoom(delta) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const wc = mainWindow.webContents;
+  let next = wc.getZoomFactor() + delta;
+  if (delta === 0) next = 1;
+  next = Math.min(3, Math.max(0.5, Math.round(next * 100) / 100));
+  wc.setZoomFactor(next);
+  if (windowManager && windowManager.syncLayout) {
+    setTimeout(() => windowManager.syncLayout(), 0);
+    setTimeout(() => windowManager.syncLayout(), 50);
+  }
+}
+
 function createMainWindow() {
+  const iconPath = path.join(__dirname, '..', 'build', 'icon.ico');
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -22,6 +36,7 @@ function createMainWindow() {
     useContentSize: true,
     backgroundColor: '#080D16',
     show: false,
+    icon: iconPath,
     webPreferences: {
       preload: path.join(__dirname, '..', 'renderer', 'preload.js'),
       contextIsolation: true,
@@ -68,9 +83,9 @@ app.whenReady().then(() => {
         { role: 'forceReload', label: '强制刷新' },
         { role: 'toggleDevTools', label: '开发者工具' },
         { type: 'separator' },
-        { role: 'resetZoom', label: '重置缩放' },
-        { role: 'zoomIn', label: '放大' },
-        { role: 'zoomOut', label: '缩小' },
+        { label: '重置缩放', accelerator: 'CmdOrCtrl+0', click: () => bumpZoom(0) },
+        { label: '放大', accelerator: 'CmdOrCtrl+=', click: () => bumpZoom(0.1) },
+        { label: '缩小', accelerator: 'CmdOrCtrl+-', click: () => bumpZoom(-0.1) },
         { type: 'separator' },
         { role: 'togglefullscreen', label: '全屏' }
       ]

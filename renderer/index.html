@@ -8,13 +8,19 @@
 </head>
 <body>
   <div id="toolbar">
-    <span class="title">直播运营助手</span>
+    <div class="brand">
+      <img class="brand-logo" src="assets/logo.png" alt="" width="22" height="22" />
+      <div class="brand-text">
+        <span class="title">直播运营助手</span>
+        <span class="subtitle">Live Ops Workbench</span>
+      </div>
+    </div>
     <span class="spacer"></span>
-    <button id="btn-quick-report" title="快速生成日报" class="primary">📋 日报</button>
+    <button id="btn-quick-report" title="快速生成日报" class="primary">日报</button>
     <button id="btn-refresh" title="刷新当前页">刷新</button>
     <button id="btn-pause" title="暂停/恢复自动刷新">暂停刷新</button>
     <button id="btn-reset" title="复位到默认页">复位默认页</button>
-    <button id="btn-manage" title="管理直播间">📺 管理</button>
+    <button id="btn-manage" title="管理直播间">管理</button>
     <span id="report-cd" class="report-cd"></span>
     <span id="net-status" class="net online">网络正常</span>
     <div id="toast-container"></div>
@@ -61,7 +67,7 @@
           <span class="report-title">直播日报</span>
           <div class="report-actions">
             <button id="btn-scrape-report" class="report-btn primary">生成日报</button>
-            <button id="btn-scrape-profile" class="report-btn">📊 抓取画像</button>
+            <button id="btn-scrape-profile" class="report-btn">抓取画像</button>
             <button id="btn-copy-report" class="report-btn">复制</button>
             <button id="btn-save-report" class="report-btn">保存历史</button>
           </div>

@@ -30,6 +30,7 @@ const api = {
     ipcRenderer.send('set-keepalive', { roomId, subPage, keepAlive }),
   // 上报内容区实测尺寸，供 BrowserView 自适应
   reportLayoutBounds: (rect) => ipcRenderer.send('layout-bounds', rect),
+  onLayoutSync: (cb) => ipcRenderer.on('layout-sync', () => cb()),
   // 主进程推送的状态更新
   onStateUpdate: (cb) => ipcRenderer.on('state-update', (_e, s) => cb(s)),
   // 新私信角标
