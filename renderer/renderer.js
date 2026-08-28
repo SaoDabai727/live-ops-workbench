@@ -12,6 +12,7 @@
   const loadingBar = document.getElementById('loading-bar');
   const toastContainer = document.getElementById('toast-container');
   const btnQuickReport = document.getElementById('btn-quick-report');
+  const btnExplainPanel = document.getElementById('btn-explain-panel');
   const reportCd = document.getElementById('report-cd');
   // 日报面板元素
   const reportPanel = document.getElementById('report-panel');
@@ -56,11 +57,13 @@
     if (isReport && state.lastReport && !reportEditor.value) {
       reportEditor.value = state.lastReport;
     }
-    // 工具栏按钮：report 页隐藏刷新/暂停/复位
+    // 工具栏按钮：report 页隐藏刷新/暂停/复位；非巨量百应隐藏讲解面板
     const isReportPage = state.currentSubPage === 'report';
+    const isJuliang = state.currentSubPage === 'juliang';
     btnRefresh.style.display = isReportPage ? 'none' : '';
     btnPause.style.display = isReportPage ? 'none' : '';
     btnReset.style.display = isReportPage ? 'none' : '';
+    if (btnExplainPanel) btnExplainPanel.style.display = isJuliang ? '' : 'none';
   }
 
 
@@ -125,6 +128,22 @@
     // 快捷入口：切到直播日报子页（用户自行点击「生成日报」）
     api.switchSubPage('report');
   };
+  if (btnExplainPanel) {
+    btnExplainPanel.onclick = async () => {
+      if (!api.forceExplainPanel) return;
+      btnExplainPanel.disabled = true;
+      try {
+        const res = await api.forceExplainPanel();
+        if (!res || !res.ok) {
+          alert((res && res.message) || '无法打开讲解面板');
+        }
+      } catch (err) {
+        alert(err.message || String(err));
+      } finally {
+        btnExplainPanel.disabled = false;
+      }
+    };
+  }
   btnRefresh.onclick = () => api.refreshCurrent();
   btnPause.onclick = () => {
     const next = !(btnPause.dataset.paused === '1');

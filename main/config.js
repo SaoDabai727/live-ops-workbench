@@ -80,6 +80,13 @@ function syncSubPagesFromBundle(srcDir, userDir) {
         }
       }
     });
+    // 移除内置清单中已删除的子页（如误加的讲解台）
+    Object.keys(user.subPages).forEach((key) => {
+      if (!bundled.subPages[key] && (key === 'explain' || user.subPages[key].kind === 'explainDesk')) {
+        delete user.subPages[key];
+        changed = true;
+      }
+    });
     // 合并飞书白名单域名
     if (Array.isArray(bundled.urlWhitelist)) {
       const set = new Set(user.urlWhitelist || []);

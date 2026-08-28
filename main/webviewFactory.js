@@ -5,6 +5,7 @@ const path = require('path');
 const { config, getDefaultUrl } = require('./config');
 const debugLog = require('./debugLog');
 const { ensurePartitionGuarded, isBlockedUrl, isExternalProtocol } = require('./protocolGuard');
+const { attachExplainAutoClick } = require('./explainManager');
 
 const WEBVIEW_PRELOAD = path.join(__dirname, 'webviewPreload.js');
 
@@ -195,6 +196,10 @@ function createWebViewFactory({ authManager, onViewEvent } = {}) {
     if (isNew) {
       registerViewMeta(view, roomId, subPage);
       bindEvents(view, roomId, subPage);
+      // 自动点讲解仅挂在「巨量百应」分区（每个直播间各自一份）
+      if (subPage === 'juliang') {
+        attachExplainAutoClick(view);
+      }
     }
     // 导航状态保持：优先使用上次访问的 URL，过滤 about:blank（防御性保护）
     const finalUrl = (lastUrl && lastUrl !== 'about:blank') ? lastUrl : getDefaultUrl(roomId, subPage);

@@ -11,6 +11,7 @@ const { createRoomManagerWindow } = require('./roomManager');
 const { saveRooms, loadRooms, loadNavState, saveNavState, saveReport, loadLastReport } = require('./config');
 const { generateReport, scrapeProfile } = require('./reportManager');
 const { createReportScheduler } = require('./reportScheduler');
+const { forceExplainPanel } = require('./explainManager');
 const { clipboard } = require('electron');
 const debugLog = require('./debugLog');
 const { cssRectToViewBounds } = require('./layoutBounds');
@@ -414,6 +415,30 @@ function createWindowManager({ mainWindow }) {
         return { ok: false, error: e.message };
       }
     });
+    // 工具栏「讲解面板」：强制向当前 BrowserView 注入/显示自动点讲解浮层
+    ipcMain.handle('explain-force-panel', async () => {
+      if (appState.currentSubPage !== 'juliang') {
+        return {
+          ok: false,
+          reason: 'not-juliang',
+          message: '请先切换到「巨量百应」子页，进入直播中控台后再打开讲解面板。'
+        };
+      }
+      const v = factory.getCurrentView();
+      if (!v || v.webContents.isDestroyed()) {
+        return { ok: false, reason: 'no-view', message: '当前没有可操作的页面，请先打开巨量百应中控台。' };
+      }
+      const result = await forceExplainPanel(v);
+      if (!result.ok) {
+        const hint =
+          result.reason === 'host-mismatch'
+            ? '请先打开百应「直播中控台」页面，再点「讲解面板」。'
+            : '注入失败，请刷新中控台页面后重试。';
+        return { ok: false, reason: result.reason || 'failed', message: hint, url: result.url };
+      }
+      return { ok: true, injected: result.injected, url: result.url };
+    });
+
     // 复制日报到剪贴板
     ipcMain.handle('copy-report', (event, { reportText }) => {
       try {

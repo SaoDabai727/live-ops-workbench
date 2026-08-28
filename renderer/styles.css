@@ -500,19 +500,19 @@ html, body {
 
 .update-banner {
   position: fixed;
-  top: 10px;
+  top: 14px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 100000;
-  width: min(560px, calc(100vw - 32px));
+  width: min(760px, calc(100vw - 28px));
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  padding: 12px 14px;
+  gap: 16px;
+  padding: 18px 20px;
   background: linear-gradient(180deg, #121a28 0%, var(--surface) 100%);
   border: 1px solid rgba(0, 229, 192, 0.45);
-  border-radius: 12px;
-  box-shadow: 0 12px 36px rgba(0,0,0,0.55), 0 0 20px var(--cyan-glow);
+  border-radius: 14px;
+  box-shadow: 0 16px 44px rgba(0,0,0,0.55), 0 0 24px var(--cyan-glow);
   animation: update-banner-in 0.22s ease-out;
 }
 @keyframes update-banner-in {
@@ -520,18 +520,18 @@ html, body {
   to { opacity: 1; transform: translate(-50%, 0); }
 }
 .update-banner[hidden] { display: none !important; }
-.update-banner.is-error { border-color: rgba(248, 113, 113, 0.55); box-shadow: 0 12px 36px rgba(0,0,0,0.55); }
+.update-banner.is-error { border-color: rgba(248, 113, 113, 0.55); box-shadow: 0 16px 44px rgba(0,0,0,0.55); }
 .update-banner.is-ok { border-color: rgba(56, 189, 248, 0.45); }
 .update-banner-icon {
   flex: 0 0 auto;
-  width: 28px;
-  height: 28px;
-  margin-top: 1px;
-  border-radius: 8px;
+  width: 40px;
+  height: 40px;
+  margin-top: 0;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: 18px;
   font-weight: 700;
   color: #041018;
   background: linear-gradient(135deg, var(--cyan), var(--blue));
@@ -548,28 +548,28 @@ html, body {
 }
 .update-banner-body { flex: 1; min-width: 0; }
 .update-banner-title {
-  font-size: 13px;
+  font-size: 16px;
   color: var(--text);
-  font-weight: 600;
-  line-height: 1.35;
+  font-weight: 650;
+  line-height: 1.4;
 }
 .update-banner-meta {
-  margin-top: 4px;
-  font-size: 11.5px;
+  margin-top: 6px;
+  font-size: 13px;
   color: var(--muted);
-  line-height: 1.4;
+  line-height: 1.45;
 }
 .update-banner-meta[hidden] { display: none !important; }
 .update-banner-progress {
-  margin-top: 8px;
+  margin-top: 12px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 .update-banner-progress[hidden] { display: none !important; }
 .update-progress-track {
   flex: 1;
-  height: 6px;
+  height: 10px;
   background: var(--surface-3);
   border-radius: 999px;
   overflow: hidden;
@@ -584,27 +584,27 @@ html, body {
 }
 .update-progress-pct {
   flex: 0 0 auto;
-  min-width: 42px;
+  min-width: 52px;
   text-align: right;
-  font-size: 11px;
+  font-size: 13px;
   font-variant-numeric: tabular-nums;
   color: var(--cyan);
-  font-weight: 600;
+  font-weight: 650;
 }
 .update-banner-actions {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   margin-left: 4px;
 }
 .update-btn {
-  min-width: 88px;
-  padding: 6px 12px;
-  border-radius: 7px;
+  min-width: 108px;
+  padding: 10px 16px;
+  border-radius: 8px;
   border: 1px solid var(--border-light);
   background: var(--surface-2);
   color: var(--text);
-  font-size: 12px;
+  font-size: 14px;
   cursor: pointer;
   white-space: nowrap;
 }
@@ -617,7 +617,7 @@ html, body {
   background: rgba(0,229,192,0.14);
   border-color: var(--cyan);
   color: var(--cyan-bright);
-  font-weight: 600;
+  font-weight: 650;
 }
 .update-btn.primary:hover {
   background: rgba(0,229,192,0.22);

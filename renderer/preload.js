@@ -56,6 +56,9 @@ const api = {
   // 自动日报完成通知
   onAutoReportDone: (cb) => ipcRenderer.on('auto-report-done', (_e, p) => cb(p)),
 
+  // 自动点讲解：强制在当前页显示控制面板
+  forceExplainPanel: () => ipcRenderer.invoke('explain-force-panel'),
+
   // 云端升级
   getAppInfo: () => ipcRenderer.invoke('app-get-info'),
   getUpdaterState: () => ipcRenderer.invoke('updater-get-state'),
