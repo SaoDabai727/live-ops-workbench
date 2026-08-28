@@ -144,11 +144,20 @@ function createUpdater({ getMainWindow }) {
   function applyFeed() {
     cfg = loadUpdaterConfig();
     state.enabled = !!cfg.enabled;
-    state.configured = !!(cfg.enabled && cfg.feedUrl);
     state.currentVersion = app.getVersion();
 
-    if (!cfg.enabled || !cfg.feedUrl) {
-      send({ status: 'disabled', error: cfg.enabled ? '未配置 feedUrl' : '云端升级未开启' });
+    const provider = (cfg.provider || 'generic').toLowerCase();
+    const isGithub = provider === 'github';
+    const owner = cfg.owner || 'SaoDabai727';
+    const repo = cfg.repo || 'live-ops-workbench';
+    state.configured = !!(cfg.enabled && (isGithub ? (owner && repo) : cfg.feedUrl));
+
+    if (!cfg.enabled) {
+      send({ status: 'disabled', error: '云端升级未开启' });
+      return false;
+    }
+    if (!isGithub && !cfg.feedUrl) {
+      send({ status: 'disabled', error: '未配置 feedUrl' });
       return false;
     }
     if (!app.isPackaged && !cfg.allowDevCheck) {
@@ -161,10 +170,19 @@ function createUpdater({ getMainWindow }) {
     updater.autoInstallOnAppQuit = cfg.autoInstallOnAppQuit !== false;
     updater.channel = cfg.channel || 'latest';
     updater.forceDevUpdateConfig = !app.isPackaged && !!cfg.allowDevCheck;
-    updater.setFeedURL({
-      provider: cfg.provider || 'generic',
-      url: cfg.feedUrl
-    });
+    if (isGithub) {
+      updater.setFeedURL({
+        provider: 'github',
+        owner,
+        repo,
+        private: !!cfg.private
+      });
+    } else {
+      updater.setFeedURL({
+        provider: provider || 'generic',
+        url: cfg.feedUrl
+      });
+    }
     return true;
   }
 
@@ -176,7 +194,7 @@ function createUpdater({ getMainWindow }) {
           type: 'info',
           title: '检查更新',
           message: '云端升级尚未就绪',
-          detail: state.error + '\n\n请在 config/updater.json 填写 feedUrl（静态资源根地址），然后把 latest.yml 和安装包上传到该地址。'
+          detail: state.error + '\n\n默认使用 GitHub Releases 作为升级源。也可在 config/updater.json 改用 OSS 的 feedUrl。'
         });
       }
       return snapshot();

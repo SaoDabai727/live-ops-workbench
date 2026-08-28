@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## V1.51 (2026-08-28)
+
+### 变更
+- 云端升级默认接入 GitHub Releases（`SaoDabai727/live-ops-workbench`）
+- 安装包改为英文文件名，避免 Release 资源名被截断导致无法更新
+
 ## V1.50 (2026-08-28)
 
 ### 新增

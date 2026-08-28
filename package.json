@@ -1,6 +1,6 @@
 {
   "name": "live-ops-workbench",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "直播运营助手 - 多直播间监控与日报生成一体工作台",
   "main": "main/index.js",
   "author": "",
@@ -25,6 +25,7 @@
       "config/**/*",
       "package.json"
     ],
+    "artifactName": "live-ops-workbench-${version}-${os}-${arch}.${ext}",
     "win": {
       "target": [
         {
@@ -48,7 +49,11 @@
       "allowToChangeInstallationDirectory": true,
       "shortcutName": "直播运营助手",
       "installerSidebar": null,
-      "differentialPackage": true
+      "differentialPackage": true,
+      "artifactName": "live-ops-workbench-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "live-ops-workbench-Portable-${version}.${ext}"
     },
     "extraMetadata": {
       "main": "main/index.js"
@@ -57,10 +62,13 @@
     "asarUnpack": [
       "config/*.json"
     ],
-    "publish": {
-      "provider": "generic",
-      "url": "https://example.invalid/live-ops-workbench"
-    }
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "SaoDabai727",
+        "repo": "live-ops-workbench"
+      }
+    ]
   },
   "dependencies": {
     "electron-updater": "^6.1.8",
