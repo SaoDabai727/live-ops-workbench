@@ -1,11 +1,19 @@
 {
-  "version": "1.1",
-  "_readme": "默认 GitHub Releases；mirror 非空时经国内加速镜像拉取（generic）。安装后可在 %APPDATA%/live-ops-workbench/config/updater.json 覆盖。无镜像则 mirror 设为 \"\"。",
+  "version": "1.2",
+  "_readme": "默认 GitHub Releases + 国内多镜像竞速。也可设 feedUrl 指向自建 OSS/CDN（最快）。安装后可在 %APPDATA%/live-ops-workbench/config/updater.json 覆盖。",
   "enabled": true,
   "provider": "github",
   "owner": "SaoDabai727",
   "repo": "live-ops-workbench",
-  "mirror": "https://ghfast.top/",
+  "mirror": "https://gh-proxy.com/",
+  "mirrors": [
+    "https://gh-proxy.com/",
+    "https://tvv.tw/",
+    "https://ghfast.top/",
+    "https://gh.llkk.cc/"
+  ],
+  "mirrorRace": true,
+  "mirrorRaceTimeoutMs": 5000,
   "feedUrl": "",
   "channel": "latest",
   "autoCheckOnStartup": true,

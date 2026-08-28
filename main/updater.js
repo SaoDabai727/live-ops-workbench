@@ -56,13 +56,69 @@ function loadUpdaterConfig() {
   delete cfg._readme;
   delete cfg.version;
   cfg.feedUrl = String(cfg.feedUrl || '').trim().replace(/\/+$/, '');
-  cfg.mirror = String(cfg.mirror || '').trim();
-  if (cfg.mirror && !/\/$/.test(cfg.mirror)) cfg.mirror += '/';
+  cfg.mirror = normalizeMirror(cfg.mirror);
+  if (!Array.isArray(cfg.mirrors)) cfg.mirrors = [];
+  cfg.mirrorRace = cfg.mirrorRace !== false;
   return cfg;
 }
 
 function githubLatestDownloadUrl(owner, repo) {
   return 'https://github.com/' + owner + '/' + repo + '/releases/latest/download';
+}
+
+function normalizeMirror(m) {
+  let s = String(m || '').trim();
+  if (!s) return '';
+  if (!/\/$/.test(s)) s += '/';
+  return s;
+}
+
+function mirrorList(cfg) {
+  const list = [];
+  const push = (m) => {
+    const n = normalizeMirror(m);
+    if (n && !list.includes(n)) list.push(n);
+  };
+  if (Array.isArray(cfg.mirrors)) cfg.mirrors.forEach(push);
+  push(cfg.mirror);
+  return list;
+}
+
+async function raceMirrors(mirrors, owner, repo, timeoutMs) {
+  if (!mirrors.length) return '';
+  if (mirrors.length === 1) return mirrors[0];
+  const testPath = githubLatestDownloadUrl(owner, repo) + '/latest.yml';
+  const ms = Math.max(1500, Number(timeoutMs) || 5000);
+
+  const probes = mirrors.map(async (mirror) => {
+    const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timer = setTimeout(() => { try { ctrl && ctrl.abort(); } catch (e) {} }, ms);
+    const t0 = Date.now();
+    try {
+      const res = await fetch(mirror + testPath, {
+        method: 'GET',
+        signal: ctrl ? ctrl.signal : undefined,
+        headers: { 'Cache-Control': 'no-cache' }
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      await res.arrayBuffer();
+      return { mirror, ok: true, ms: Date.now() - t0 };
+    } catch (e) {
+      return { mirror, ok: false, ms: Date.now() - t0, err: e && e.message };
+    } finally {
+      clearTimeout(timer);
+    }
+  });
+
+  const results = await Promise.all(probes);
+  const ok = results.filter((r) => r.ok).sort((a, b) => a.ms - b.ms);
+  if (ok.length) {
+    log('镜像竞速选用 ' + ok[0].mirror + ' (' + ok[0].ms + 'ms) candidates=' +
+      results.map((r) => (r.ok ? 'OK' : 'FAIL') + ':' + r.ms + '@' + r.mirror).join(' | '));
+    return ok[0].mirror;
+  }
+  log('镜像竞速全部失败，回退 ' + mirrors[0]);
+  return mirrors[0];
 }
 
 function createUpdater({ getMainWindow }) {
@@ -87,6 +143,8 @@ function createUpdater({ getMainWindow }) {
   let lastProgressAt = 0;
   let startupTimer = null;
   let checkingPromise = null;
+  let chosenMirror = '';
+  let racePromise = null;
 
   function snapshot() {
     return Object.assign({}, state);
@@ -153,20 +211,22 @@ function createUpdater({ getMainWindow }) {
     return autoUpdater;
   }
 
-  function resolveFeed(cfgIn) {
+  function resolveFeed(cfgIn, mirrorOverride) {
     const provider = (cfgIn.provider || 'generic').toLowerCase();
     const owner = cfgIn.owner || 'SaoDabai727';
     const repo = cfgIn.repo || 'live-ops-workbench';
     const isGithub = provider === 'github';
+    const mirrors = mirrorList(cfgIn);
+    const mirror = normalizeMirror(mirrorOverride) || mirrors[0] || '';
 
-    // 显式 generic feedUrl 优先
-    if (!isGithub && cfgIn.feedUrl) {
+    // 自建 OSS/CDN 优先（国内带宽最好）
+    if (cfgIn.feedUrl) {
       return { mode: 'generic', url: cfgIn.feedUrl, label: cfgIn.feedUrl, owner, repo };
     }
-    if (isGithub && cfgIn.mirror) {
+    if (isGithub && mirror) {
       const origin = githubLatestDownloadUrl(owner, repo);
-      const url = cfgIn.mirror + origin;
-      return { mode: 'generic', url, label: 'GitHub镜像 ' + cfgIn.mirror, owner, repo };
+      const url = mirror + origin;
+      return { mode: 'generic', url, label: 'GitHub镜像 ' + mirror, owner, repo, mirrors };
     }
     if (isGithub) {
       return { mode: 'github', owner, repo, label: 'GitHub ' + owner + '/' + repo };
@@ -174,12 +234,36 @@ function createUpdater({ getMainWindow }) {
     return { mode: 'none', owner, repo, label: '' };
   }
 
-  function applyFeed() {
+  async function ensureChosenMirror(cfgIn) {
+    const mirrors = mirrorList(cfgIn);
+    if (!mirrors.length) {
+      chosenMirror = '';
+      return '';
+    }
+    if (!cfgIn.mirrorRace || mirrors.length === 1) {
+      chosenMirror = mirrors[0];
+      return chosenMirror;
+    }
+    if (chosenMirror && mirrors.includes(chosenMirror)) return chosenMirror;
+    if (!racePromise) {
+      racePromise = raceMirrors(mirrors, cfgIn.owner || 'SaoDabai727', cfgIn.repo || 'live-ops-workbench', cfgIn.mirrorRaceTimeoutMs)
+        .then((m) => { chosenMirror = m; return m; })
+        .finally(() => { racePromise = null; });
+    }
+    return racePromise;
+  }
+
+  async function applyFeed() {
     cfg = loadUpdaterConfig();
     state.enabled = !!cfg.enabled;
     state.currentVersion = app.getVersion();
 
-    const feed = resolveFeed(cfg);
+    let mirror = '';
+    if ((cfg.provider || '').toLowerCase() === 'github' && !cfg.feedUrl) {
+      mirror = await ensureChosenMirror(cfg);
+    }
+
+    const feed = resolveFeed(cfg, mirror);
     state.feedLabel = feed.label || '';
     state.configured = !!(cfg.enabled && feed.mode !== 'none');
 
@@ -220,7 +304,7 @@ function createUpdater({ getMainWindow }) {
   }
 
   async function check({ userTriggered } = {}) {
-    if (!applyFeed()) {
+    if (!(await applyFeed())) {
       return snapshot();
     }
     if (checkingPromise) return checkingPromise;
@@ -248,7 +332,7 @@ function createUpdater({ getMainWindow }) {
   }
 
   async function download() {
-    if (!applyFeed()) return snapshot();
+    if (!(await applyFeed())) return snapshot();
     if (state.status === 'downloaded') return snapshot();
     try {
       send({
@@ -285,7 +369,7 @@ function createUpdater({ getMainWindow }) {
   }
 
   function init() {
-    applyFeed();
+    applyFeed().catch((e) => log('初始化升级源失败 ' + (e && e.message)));
     ipcMain.handle('app-get-info', () => ({
       version: app.getVersion(),
       name: app.getName(),
@@ -302,7 +386,7 @@ function createUpdater({ getMainWindow }) {
     ipcMain.handle('updater-dismiss', () => dismiss());
 
     // GitHub / generic 均可启动自动检查（原先误要求 feedUrl，导致 GitHub 模式从不自动检查）
-    if (cfg.enabled && state.configured && cfg.autoCheckOnStartup) {
+    if (cfg.enabled && cfg.autoCheckOnStartup) {
       const delay = Number(cfg.checkDelayMs) || 5000;
       startupTimer = setTimeout(() => {
         check({ userTriggered: false }).catch((e) => log('启动检查失败 ' + (e && e.message)));
