@@ -8,30 +8,32 @@ contextBridge.exposeInMainWorld('workbenchAuth', {
   getToken: () => ipcRenderer.invoke('get-token')
 });
 
-// ====== 拦截自定义协议点击（仅黑名单：bytedance:// 等会触发 Windows 弹窗的协议）======
+// ====== 全站拦截自定义协议点击（bytedance:// 等），防止 Windows 系统弹窗 ======
 (function interceptProtocolLinks() {
-  // 等待页面加载后判断域名，避免干扰其他页面（compass/buyin/feishu）
-  function startIntercept() {
-    if (!window.location.hostname.includes('douyin.com')) return;
+  const BLOCKED = /^(bytedance|ms-windows-store|snssdk|sslocal|aweme|jinnianjin|toutiao|iesrd|bdvideo|ishuidian|taobao|alipays|weixin|alipay|fb-messenger):\/\//i;
 
-    // 黑名单：仅拦截会触发 Windows 应用选择弹窗的协议
-    const BLOCKED = /^(bytedance|ms-windows-store|snssdk|sslocal|jinnianjin|toutiao|iesrd|bdvideo|ishuidian|taobao|alipays|weixin|alipay|fb-messenger):\/\//i;
-    function isBlocked(href) {
-      if (!href) return false;
-      try {
-        // 相对路径、hash、纯 query 都放行
-        if (href.startsWith('#') || href.startsWith('/') || href.startsWith('?')) return false;
-        // 非 http(s) 协议才需要检查白名单黑名单
-        if (/^https?:\/\//i.test(href)) return false;
-        return BLOCKED.test(href);
-      } catch (e) { return false; }
+  function isBlocked(href) {
+    if (!href) return false;
+    try {
+      if (href.startsWith('#') || href.startsWith('/') || href.startsWith('?')) return false;
+      if (/^https?:\/\//i.test(href) || href.startsWith('data:') || href.startsWith('blob:') || href.startsWith('about:')) {
+        return false;
+      }
+      // 任意非 http(s) 自定义协议都拦（比仅黑名单更稳）
+      if (/^[a-z][a-z0-9+.-]*:/i.test(href)) return true;
+      return BLOCKED.test(href);
+    } catch (e) {
+      return false;
     }
-    function block(e) {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      e.stopPropagation();
-    }
-    // 1) 拦截 <a> 点击
+  }
+
+  function block(e) {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    e.stopPropagation();
+  }
+
+  function startIntercept() {
     document.addEventListener('click', (e) => {
       const a = e.target && e.target.closest ? e.target.closest('a') : null;
       if (a) {
@@ -39,7 +41,7 @@ contextBridge.exposeInMainWorld('workbenchAuth', {
         if (isBlocked(href)) block(e);
       }
     }, true);
-    // 2) 拦截 auxiliary 点击（中键/右键）
+
     document.addEventListener('auxclick', (e) => {
       const a = e.target && e.target.closest ? e.target.closest('a') : null;
       if (a) {
@@ -47,13 +49,13 @@ contextBridge.exposeInMainWorld('workbenchAuth', {
         if (isBlocked(href)) block(e);
       }
     }, true);
-    // 3) 拦截 window.open
+
     const origOpen = window.open;
     window.open = function (url, ...args) {
       if (isBlocked(url)) return null;
       return origOpen.apply(this, [url, ...args]);
     };
-    // 4) 拦截 location.href 赋值
+
     try {
       const desc = Object.getOwnPropertyDescriptor(window.Location.prototype, 'href');
       if (desc && desc.set) {
@@ -65,7 +67,7 @@ contextBridge.exposeInMainWorld('workbenchAuth', {
         });
       }
     } catch (e) {}
-    // 5) 拦截表单提交到黑名单协议
+
     document.addEventListener('submit', (e) => {
       const form = e.target;
       const action = form && form.action ? form.action : '';
@@ -106,17 +108,14 @@ contextBridge.exposeInMainWorld('workbenchAuth', {
       const current = scanUnread();
       if (current > lastUnreadCount || force) {
         if (current > lastUnreadCount && lastUnreadCount > 0) {
-          // 数量增加 → 报告增量
           ipcRenderer.send('private-msg-count', { count: current - lastUnreadCount });
         } else if (force) {
-          // 首扫：仅当已有未读时才报告基线
           if (current > 0) ipcRenderer.send('private-msg-count', { count: current });
         }
       }
       lastUnreadCount = current;
     }
 
-    // MutationObserver 去抖 1 秒
     let timer = null;
     try {
       const observer = new MutationObserver(() => {
@@ -128,14 +127,10 @@ contextBridge.exposeInMainWorld('workbenchAuth', {
       });
     } catch (e) {}
 
-    // 备选定期扫
     setInterval(() => checkAndReport(false), 10000);
-
-    // 首扫
     setTimeout(() => checkAndReport(true), 3000);
   }
 
-  // 等待页面加载后运行（此时 window.location 已不是 about:blank）
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
     startMonitor();
   } else {

@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## V1.52 (2026-08-28)
+
+### 修复
+- 彻底拦截 `bytedance://` 等自定义协议（分区 Session + protocol.handle + 全站 preload），消除 Windows「需要新应用打开此链接」弹窗
+- BrowserView 取消错误的 AutoResize，改为按内容槽实测尺寸同步，窗口缩放/最大化后页面随工具区域自适应
+
 ## V1.51 (2026-08-28)
 
 ### 变更

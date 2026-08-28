@@ -1,40 +1,17 @@
 // webviewFactory.js — BrowserView 创建 / 销毁 / 对象池复用 / 保活 / 分区 / 事件拦截
 // 对应设计文档第 4、5 节
-const { BrowserView, session } = require('electron');
+const { BrowserView } = require('electron');
 const path = require('path');
-const { config, getDefaultUrl, isUrlAllowed } = require('./config');
+const { config, getDefaultUrl } = require('./config');
 const debugLog = require('./debugLog');
+const { ensurePartitionGuarded, isBlockedUrl, isExternalProtocol } = require('./protocolGuard');
 
 const WEBVIEW_PRELOAD = path.join(__dirname, 'webviewPreload.js');
 
 // 所有由本 factory 创建的 webContents.id（用于 webRequest 范围过滤）
 const ourWebContentsIds = new Set();
-let protocolBlockerInstalled = false;
-
-// 网络层兜底：拦截所有非 http(s)/data/blob 协议（bytedance://、weixin:// 等）
-// 这一层比 OS 协议处理器更早，will-navigate 拦不住的也能在这里拦
-function installProtocolBlocker() {
-  if (protocolBlockerInstalled) return;
-  const { session: electronSession } = require('electron');
-  electronSession.defaultSession.webRequest.onBeforeRequest((details, callback) => {
-    if (!ourWebContentsIds.has(details.webContentsId)) {
-      callback({}); // 不是我们的视图，不拦截
-      return;
-    }
-    const u = details.url;
-    if (/^https?:\/\//i.test(u) || u.startsWith('data:') || u.startsWith('blob:')) {
-      callback({});
-    } else {
-      console.warn('[webviewFactory] 阻止非 http 协议请求:', u);
-      callback({ cancel: true });
-    }
-  });
-  protocolBlockerInstalled = true;
-}
 
 function createWebViewFactory({ authManager, onViewEvent } = {}) {
-  // 必须在 app.ready 之后调用 → 此函数在 windowManager.init() 中被触发，时机正确
-  installProtocolBlocker();
   // 对象池按 partition 分组，避免跨直播间/功能页串号（修正文档中"复用即清状态"的隐患）
   const viewPool = new Map();        // partition -> BrowserView[]
   const keptAliveViews = new Map();  // `${roomId}_${subPage}` -> { view, meta }
@@ -47,6 +24,7 @@ function createWebViewFactory({ authManager, onViewEvent } = {}) {
 
   function registerViewMeta(view, roomId, subPage) {
     const partition = partitionName(roomId, subPage);
+    ensurePartitionGuarded(partition);
     viewRegistry.set(view.webContents.id, { roomId, subPage, partition });
     ourWebContentsIds.add(view.webContents.id);
     if (authManager && authManager.registerViewMeta) {
@@ -55,13 +33,19 @@ function createWebViewFactory({ authManager, onViewEvent } = {}) {
   }
 
   function bindEvents(view, roomId, subPage) {
-    // 拦截新窗口：在应用内加载，不跳出浏览器
+    // window.open / target=_blank：协议拦截；http(s) 在当前视图打开
     view.webContents.setWindowOpenHandler(({ url }) => {
-      if (isUrlAllowed(url)) view.webContents.loadURL(url);
+      if (isBlockedUrl(url) || isExternalProtocol(url)) {
+        debugLog.log(`[WF] window.open BLOCKED: "${String(url).slice(0, 120)}"`);
+        return { action: 'deny' };
+      }
+      if (/^https?:\/\//i.test(url)) {
+        try { view.webContents.loadURL(url); } catch (e) {}
+      }
       return { action: 'deny' };
     });
 
-    // 拦截 OAuth 回调（第 5.1 节），同时处理错误页重试请求
+    // 拦截 OAuth 回调（第 5.1 节），同时处理错误页重试请求 / 自定义协议
     view.webContents.on('will-navigate', (event, url) => {
       // 0. 错误页重试：__RELOAD_ACTION__?url=xxx
       if (url.startsWith('__RELOAD_ACTION__?url=')) {
@@ -79,13 +63,23 @@ function createWebViewFactory({ authManager, onViewEvent } = {}) {
         }
         return;
       }
-      // 2. 非 http(s) 协议（如 bytedance://、weixin:// 等）一律阻止，
-      //    避免 Windows 弹"需要新应用打开此链接"的系统对话框。
+      // 2. 非 http(s) 协议一律阻止（bytedance:// 等），避免 Windows 系统弹窗
       if (!/^https?:\/\//i.test(url)) {
         event.preventDefault();
-        console.warn('[webviewFactory] 阻止非 http 协议跳转:', url);
+        debugLog.log(`[WF] will-navigate BLOCKED: "${String(url).slice(0, 120)}"`);
       }
     });
+
+    try {
+      view.webContents.on('will-frame-navigate', (event) => {
+        const url = event.url || '';
+        if (url && !/^https?:\/\//i.test(url) && !url.startsWith('__RELOAD_ACTION__') &&
+            !url.startsWith('about:') && !url.startsWith('data:') && !url.startsWith('blob:')) {
+          event.preventDefault();
+          debugLog.log(`[WF] will-frame-navigate BLOCKED: "${url.slice(0, 120)}"`);
+        }
+      });
+    } catch (e) {}
 
     // 加载失败内嵌错误页（第 9.1 节）
     let isErrorPage = false;  // 防止错误页加载自身时递归
@@ -98,6 +92,8 @@ function createWebViewFactory({ authManager, onViewEvent } = {}) {
       if (cur === 'about:blank') return;
       // 已经是错误页？跳过
       if (cur.startsWith('data:text/html')) return;
+      // 自定义协议失败不展示错误页
+      if (validatedURL && isExternalProtocol(validatedURL)) return;
       isErrorPage = true;
       const originalUrl = encodeURIComponent(validatedURL || cur);
       const html = 'data:text/html;charset=utf-8,' +
@@ -116,27 +112,6 @@ function createWebViewFactory({ authManager, onViewEvent } = {}) {
     view.webContents.on('render-process-gone', (event, details) => {
       console.error('[webviewFactory] 渲染进程崩溃：', details.reason);
       try { view.webContents.reload(); } catch (e) {}
-    });
-
-    // 黑名单协议：仅拦截会触发 Windows 应用选择弹窗的协议（bytedance:// 等）
-    // 其他 douyin 内部协议（aweme://、sslocal:// 等）放行，避免误伤正常跳转
-    const BLOCKED_PROTOCOL = /^((bytedance|ms-windows-store|snssdk|sslocal|jinnianjin|toutiao|iesrd|bdvideo|ishuidian|taobao|alipays|weixin|alipay|fb-messenger):\/\/|javascript:)/i;
-    view.webContents.on('will-navigate', (event, url) => {
-      if (BLOCKED_PROTOCOL.test(url)) {
-        event.preventDefault();
-        debugLog.log(`[WF] will-navigate BLOCKED blacklisted url: "${url}"`);
-      }
-    });
-    // window.open / target=_blank：让当前 BrowserView 原地跳转，不开新桌面窗口
-    view.webContents.setWindowOpenHandler(({ url }) => {
-      if (BLOCKED_PROTOCOL.test(url)) {
-        debugLog.log(`[WF] window.open BLOCKED blacklisted url: "${url}"`);
-        return { action: 'deny' };
-      }
-      // 正常 URL：原地导航到该 URL（无新窗口）
-      debugLog.log(`[WF] window.open REDIRECT current view to: "${url}"`);
-      try { view.webContents.loadURL(url); } catch (e) {}
-      return { action: 'deny' };
     });
 
     // 加载状态变化 → 通知 UI 显示加载进度条

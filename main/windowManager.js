@@ -146,10 +146,14 @@ function createWindowManager({ mainWindow }) {
   function applyViewBounds() {
     const v = factory.getCurrentView();
     if (!v || v.webContents.isDestroyed()) return;
+    // 切到日报页时视图已从窗口移除，无需设置
+    const attached = mainWindow.getBrowserViews && mainWindow.getBrowserViews().includes(v);
+    if (!attached) return;
     const b = bounds();
     try {
+      // 不用 setAutoResize：它按整窗增量缩放，会与侧栏/工具栏布局错位
+      v.setAutoResize({ width: false, height: false, horizontal: false, vertical: false });
       v.setBounds(b);
-      v.setAutoResize({ width: true, height: true, horizontal: false, vertical: false });
     } catch (e) {}
   }
 
@@ -194,9 +198,14 @@ function createWindowManager({ mainWindow }) {
     }
     view.setBounds(bounds());
     try {
-      view.setAutoResize({ width: true, height: true, horizontal: false, vertical: false });
+      view.setAutoResize({ width: false, height: false, horizontal: false, vertical: false });
     } catch (e) {}
     mainWindow.addBrowserView(view);
+    // addBrowserView 后再设一次，避免初始尺寸被覆盖
+    applyViewBounds();
+    // 下一帧再同步，适配 maximize / DPI
+    setTimeout(applyViewBounds, 0);
+    setTimeout(applyViewBounds, 100);
     refresh.start(view, subPage);
     // 私信页：进入时即尝试启动后台 WebSocket（不等 OAuth 回调）
     if (subPage === 'privateMsg') {
@@ -433,8 +442,9 @@ function createWindowManager({ mainWindow }) {
   function init() {
     registerIpc();
     mainWindow.on('resize', onResize);
-    mainWindow.on('maximize', onResize);
-    mainWindow.on('unmaximize', onResize);
+    mainWindow.on('resized', onResize);
+    mainWindow.on('maximize', () => { setTimeout(onResize, 0); setTimeout(onResize, 100); });
+    mainWindow.on('unmaximize', () => { setTimeout(onResize, 0); setTimeout(onResize, 100); });
     mainWindow.on('enter-full-screen', onResize);
     mainWindow.on('leave-full-screen', onResize);
     mainWindow.webContents.on('did-finish-load', () => {

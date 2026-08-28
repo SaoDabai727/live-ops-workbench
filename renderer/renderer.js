@@ -363,10 +363,15 @@
 
   // —— BrowserView 内容区自适应：按 #content-slot 实测尺寸上报 ——
   const contentSlot = document.getElementById('content-slot');
+  const mainEl = document.getElementById('main');
   let layoutRaf = 0;
   function reportLayoutBounds() {
-    if (!contentSlot || !api.reportLayoutBounds) return;
-    const rect = contentSlot.getBoundingClientRect();
+    if (!api.reportLayoutBounds) return;
+    const el = contentSlot || mainEl;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    // 槽位尚未完成布局时跳过，避免上报 0 尺寸
+    if (rect.width < 40 || rect.height < 40) return;
     api.reportLayoutBounds({
       x: Math.max(0, Math.round(rect.left)),
       y: Math.max(0, Math.round(rect.top)),
@@ -379,14 +384,17 @@
     layoutRaf = requestAnimationFrame(() => {
       layoutRaf = 0;
       reportLayoutBounds();
+      // 再补一帧，覆盖 maximize 后的二次回流
+      requestAnimationFrame(reportLayoutBounds);
     });
   }
-  if (contentSlot && typeof ResizeObserver !== 'undefined') {
-    new ResizeObserver(scheduleLayoutReport).observe(contentSlot);
+  if (typeof ResizeObserver !== 'undefined') {
+    const ro = new ResizeObserver(scheduleLayoutReport);
+    if (contentSlot) ro.observe(contentSlot);
+    if (mainEl) ro.observe(mainEl);
+    ro.observe(document.documentElement);
   }
   window.addEventListener('resize', scheduleLayoutReport);
   api.onStateUpdate(() => scheduleLayoutReport());
-  setTimeout(reportLayoutBounds, 0);
-  setTimeout(reportLayoutBounds, 100);
-  setTimeout(reportLayoutBounds, 400);
+  [0, 50, 150, 400, 1000].forEach((ms) => setTimeout(reportLayoutBounds, ms));
 })();

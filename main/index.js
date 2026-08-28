@@ -2,8 +2,12 @@
 // 对应设计文档第 12 节开发路线图：Electron 主进程结构、窗口管理
 const { app, BrowserWindow, Menu } = require('electron');
 const path = require('path');
+const { registerPrivilegedSchemes, installProtocolGuard } = require('./protocolGuard');
 const { createWindowManager } = require('./windowManager');
 const { createUpdater } = require('./updater');
+
+// 必须在 app.ready 之前注册，才能接管 bytedance:// 等协议
+registerPrivilegedSchemes();
 
 let mainWindow = null;
 let windowManager = null;
@@ -34,6 +38,8 @@ function createMainWindow() {
 }
 
 app.whenReady().then(() => {
+  installProtocolGuard();
+
   // 自定义中文应用菜单（替代默认英文菜单）
   const isMac = process.platform === 'darwin';
   const template = [
