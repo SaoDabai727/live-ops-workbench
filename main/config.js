@@ -131,7 +131,7 @@ const kpiCfg = loadJson(path.join(configDir(), 'kpiPatterns.json')) || {};
 const config = {
   liveRooms: roomsCfg.liveRooms || [],
   subPages: subCfg.subPages || {},
-  layout: subCfg.layout || { sidebarWidth: 120, tabBarHeight: 40 },
+  layout: subCfg.layout || { sidebarWidth: 128, toolbarHeight: 42, tabBarHeight: 40 },
   urlWhitelist: subCfg.urlWhitelist || [],
   authCallbackSchemes: subCfg.authCallbackSchemes || ['myapp://callback'],
   keepAliveMax: subCfg.keepAliveMax || 2,

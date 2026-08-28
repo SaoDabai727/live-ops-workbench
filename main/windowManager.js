@@ -1,7 +1,6 @@
 // windowManager.js — 窗口与 BrowserView 编排、运行时状态、IPC 调度
 // 对应设计文档第 2、3、8、12 节
-const { ipcMain, BrowserWindow } = require('electron');
-const path = require('path');
+const { ipcMain } = require('electron');
 const { config, getDefaultUrl, loadCustomUrls, saveCustomUrls } = require('./config');
 const { createWebViewFactory } = require('./webviewFactory');
 const { createAuthManager } = require('./authManager');
@@ -103,7 +102,7 @@ function createWindowManager({ mainWindow }) {
     }
   });
 
-  // V1.22 全页常驻 + 定时抓取 + 弹幕独立窗口
+  // V1.22 全页常驻 + 定时抓取
   const keepAliveSet = new Set();
   const isKeepAlive = (roomId, subPage) => keepAliveSet.has(`${roomId}_${subPage}`);
   const scheduler = createReportScheduler({ factory, config, saveReport, mainWindow });
@@ -111,8 +110,6 @@ function createWindowManager({ mainWindow }) {
     appState.nextReportTime = nextMs;
     pushState();
   });
-  // V1.28 弹幕窗口：声明在外层，dispose 才能访问
-  let danmakuWin = null;
 
   function pushState() {
     if (mainWindow) {
@@ -128,16 +125,32 @@ function createWindowManager({ mainWindow }) {
     }
   }
 
-  // 全局工具栏高度（与 renderer/styles.css 中 .toolbar 高度一致）
-  const TOOLBAR_HEIGHT = 40;
+  // BrowserView 可视区域：优先用渲染进程实测槽位，回退用内容区尺寸
+  let measuredBounds = null;
   function bounds() {
-    const b = mainWindow.getBounds();
+    if (measuredBounds && measuredBounds.width > 0 && measuredBounds.height > 0) {
+      return { ...measuredBounds };
+    }
+    const b = mainWindow.getContentBounds();
+    const sidebarW = config.layout.sidebarWidth || 128;
+    const toolbarH = config.layout.toolbarHeight || 42;
+    const tabH = config.layout.tabBarHeight || 40;
     return {
-      x: config.layout.sidebarWidth,
-      y: TOOLBAR_HEIGHT + config.layout.tabBarHeight,
-      width: Math.max(0, b.width - config.layout.sidebarWidth),
-      height: Math.max(0, b.height - TOOLBAR_HEIGHT - config.layout.tabBarHeight)
+      x: sidebarW,
+      y: toolbarH + tabH,
+      width: Math.max(0, b.width - sidebarW),
+      height: Math.max(0, b.height - toolbarH - tabH)
     };
+  }
+
+  function applyViewBounds() {
+    const v = factory.getCurrentView();
+    if (!v || v.webContents.isDestroyed()) return;
+    const b = bounds();
+    try {
+      v.setBounds(b);
+      v.setAutoResize({ width: true, height: true, horizontal: false, vertical: false });
+    } catch (e) {}
   }
 
   function showView(roomId, subPage) {
@@ -180,6 +193,9 @@ function createWindowManager({ mainWindow }) {
       try { mainWindow.removeBrowserView(prev); } catch (e) {}
     }
     view.setBounds(bounds());
+    try {
+      view.setAutoResize({ width: true, height: true, horizontal: false, vertical: false });
+    } catch (e) {}
     mainWindow.addBrowserView(view);
     refresh.start(view, subPage);
     // 私信页：进入时即尝试启动后台 WebSocket（不等 OAuth 回调）
@@ -244,17 +260,20 @@ function createWindowManager({ mainWindow }) {
       }
     });
     ipcMain.on('switch-room', (e, roomId) => showView(roomId, appState.currentSubPage));
-    ipcMain.on('switch-subpage', (e, subPage) => {
-      if (subPage === '_toggle_danmaku') {
-        debugLog.log('[Danmaku] _toggle_danmaku received');
-        if (danmakuWin && !danmakuWin.isDestroyed()) {
-          if (danmakuWin.isVisible()) { danmakuWin.hide(); }
-          else { danmakuWin.show(); }
-        } else {
-          createDanmakuWindow();
-        }
-        return;
+    ipcMain.on('layout-bounds', (e, rect) => {
+      if (!rect || typeof rect !== 'object') return;
+      const x = Math.round(Number(rect.x) || 0);
+      const y = Math.round(Number(rect.y) || 0);
+      const width = Math.max(0, Math.round(Number(rect.width) || 0));
+      const height = Math.max(0, Math.round(Number(rect.height) || 0));
+      if (width < 1 || height < 1) return;
+      const prev = measuredBounds;
+      measuredBounds = { x, y, width, height };
+      if (!prev || prev.x !== x || prev.y !== y || prev.width !== width || prev.height !== height) {
+        applyViewBounds();
       }
+    });
+    ipcMain.on('switch-subpage', (e, subPage) => {
       showView(appState.currentRoomId, subPage);
     });
     ipcMain.on('refresh-current', () => {
@@ -370,18 +389,6 @@ function createWindowManager({ mainWindow }) {
       }
     });
 
-    // V1.35：danmaku-message 仅用于接收 juliang 页面弹幕数据
-    ipcMain.on('danmaku-message', (event, { nickname, content, time }) => {
-      const meta = factory.getRoomMeta(event.sender.id);
-      const roomId = meta ? meta.roomId : (config.liveRooms[0]?.id || 'live1');
-      if (danmakuWin && !danmakuWin.isDestroyed()) {
-        danmakuWin.webContents.send('danmaku-push', { nickname, content, time });
-      }
-    });
-
-    // ====== 原有 IPC ======
-
-    // ====== 原有 IPC ======
     // 打开直播间管理对话框
     ipcMain.on('open-room-manager', () => {
       const roomData = loadRooms();
@@ -420,46 +427,29 @@ function createWindowManager({ mainWindow }) {
   }
 
   function onResize() {
-    const v = factory.getCurrentView();
-    if (v) v.setBounds(bounds());
+    applyViewBounds();
   }
 
   function init() {
     registerIpc();
     mainWindow.on('resize', onResize);
-    mainWindow.webContents.on('did-finish-load', () => pushState());
+    mainWindow.on('maximize', onResize);
+    mainWindow.on('unmaximize', onResize);
+    mainWindow.on('enter-full-screen', onResize);
+    mainWindow.on('leave-full-screen', onResize);
+    mainWindow.webContents.on('did-finish-load', () => {
+      pushState();
+      // 页面加载后稍后再量一次，确保布局稳定
+      setTimeout(onResize, 50);
+      setTimeout(onResize, 300);
+    });
     showView(appState.currentRoomId, appState.currentSubPage);
     scheduler.start();
-    setTimeout(() => createDanmakuWindow(), 2000);
-  }
-
-  function createDanmakuWindow() {
-    if (danmakuWin && !danmakuWin.isDestroyed()) return;
-    try {
-      const b = mainWindow.getBounds();
-      debugLog.log('[Danmaku] auto-creating window, bounds=' + JSON.stringify(b));
-      danmakuWin = new BrowserWindow({
-        x: b.x + b.width + 4, y: b.y,
-        width: 320, height: Math.max(400, b.height),
-        title: '弹幕',
-        autoHideMenuBar: true, resizable: true, alwaysOnTop: true,
-        webPreferences: {
-          preload: path.join(__dirname, '..', 'renderer', 'danmaku.js'),
-          contextIsolation: true, nodeIntegration: false, sandbox: false
-        }
-      });
-      danmakuWin.loadFile(path.join(__dirname, '..', 'renderer', 'danmaku.html'));
-      danmakuWin.on('closed', () => { danmakuWin = null; });
-      debugLog.log('[Danmaku] window auto-created, id=' + danmakuWin.id);
-    } catch (e) {
-      debugLog.log('[Danmaku] auto-create FAILED: ' + (e.message || String(e)));
-    }
   }
 
   function dispose() {
     debugLog.log('[WM] dispose');
     scheduler.stop();
-    if (danmakuWin && !danmakuWin.isDestroyed()) danmakuWin.close();
     if (bg && bg.dispose) bg.dispose();
     Object.keys(keepAliveSet).forEach(k => keepAliveSet.delete(k));
   }

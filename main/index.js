@@ -3,20 +3,31 @@
 const { app, BrowserWindow, Menu } = require('electron');
 const path = require('path');
 const { createWindowManager } = require('./windowManager');
+const { createUpdater } = require('./updater');
 
 let mainWindow = null;
 let windowManager = null;
+let updater = null;
 
 function createMainWindow() {
   mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 800,
+    width: 1440,
+    height: 900,
+    minWidth: 1100,
+    minHeight: 700,
+    useContentSize: true,
+    backgroundColor: '#080D16',
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, '..', 'renderer', 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false
     }
+  });
+  mainWindow.once('ready-to-show', () => {
+    try { mainWindow.maximize(); } catch (e) {}
+    mainWindow.show();
   });
   mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
   mainWindow.on('closed', () => { mainWindow = null; });
@@ -68,13 +79,20 @@ app.whenReady().then(() => {
     {
       label: '帮助(&H)',
       submenu: [
+        { label: '检查更新', click: () => { if (updater) updater.check({ userTriggered: true }); } },
+        { type: 'separator' },
         { label: '关于', click: () => {
           const { dialog } = require('electron');
           dialog.showMessageBox(mainWindow, {
             type: 'info',
             title: '关于',
             message: '直播运营助手',
-            detail: '版本 V1.40\n多直播间监控与日报生成一体工作台\n\n修复日报直播间名称匹配错误 · 日报倒计时 · 每小时自动抓取\n整合：黑蛋助手 v1.2.0 + 巨量百应工作台 v1.0.24'
+            detail: '版本 v' + app.getVersion() + '\n多直播间监控与日报生成一体工作台\n\n支持云端升级：帮助 → 检查更新\n整合：黑蛋助手 v1.2.0 + 巨量百应工作台 v1.0.24',
+            buttons: ['检查更新', '确定'],
+            defaultId: 1,
+            cancelId: 1
+          }).then((box) => {
+            if (box.response === 0 && updater) updater.check({ userTriggered: true });
           });
         }}
       ]
@@ -83,18 +101,25 @@ app.whenReady().then(() => {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 
   createMainWindow();
+  updater = createUpdater({ getMainWindow: () => mainWindow });
+  updater.init();
   windowManager = createWindowManager({ mainWindow });
   windowManager.init();
 });
 
 app.on('window-all-closed', () => {
   if (windowManager && windowManager.dispose) windowManager.dispose();
+  if (updater && updater.dispose) updater.dispose();
   if (process.platform !== 'darwin') app.quit();
 });
 
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createMainWindow();
+    if (!updater) {
+      updater = createUpdater({ getMainWindow: () => mainWindow });
+      updater.init();
+    }
     windowManager = createWindowManager({ mainWindow });
     windowManager.init();
   }

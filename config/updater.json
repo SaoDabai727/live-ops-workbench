@@ -1,0 +1,13 @@
+{
+  "version": "1.0",
+  "_readme": "把 feedUrl 改成你的静态资源根地址（阿里云 OSS / 腾讯云 COS / Nginx）。打包后把 dist 目录里的 latest.yml、安装包 exe、exe.blockmap 三个文件上传到该地址即可云端升级。安装后也可在 %APPDATA%/live-ops-workbench/config/updater.json 覆盖，无需重装。feedUrl 为空时不检查更新。",
+  "enabled": true,
+  "provider": "generic",
+  "feedUrl": "",
+  "channel": "latest",
+  "autoCheckOnStartup": true,
+  "autoDownload": false,
+  "autoInstallOnAppQuit": true,
+  "checkDelayMs": 8000,
+  "allowDevCheck": false
+}

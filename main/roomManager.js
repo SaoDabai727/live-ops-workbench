@@ -4,14 +4,18 @@ const path = require('path');
 
 function createRoomManagerWindow({ mainWindow, rooms, onSave }) {
   const win = new BrowserWindow({
-    width: 580,
-    height: 560,
-    resizable: false,
+    width: 640,
+    height: 620,
+    minWidth: 520,
+    minHeight: 420,
+    resizable: true,
     minimizable: false,
     parent: mainWindow,
     modal: true,
     title: '直播间管理',
     autoHideMenuBar: true,
+    useContentSize: true,
+    backgroundColor: '#0A0E1A',
     webPreferences: {
       preload: path.join(__dirname, '..', 'renderer', 'room-mgr.js'),
       contextIsolation: true,

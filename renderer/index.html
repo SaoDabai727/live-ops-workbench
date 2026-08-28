@@ -4,13 +4,12 @@
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' http://127.0.0.1:*; style-src 'self' 'unsafe-inline'; script-src 'self'">
   <link rel="stylesheet" href="styles.css">
-  <title>直播运营助手 V1.40</title>
+  <title>直播运营助手</title>
 </head>
 <body>
   <div id="toolbar">
-    <span class="title">直播运营助手 V1.40</span>
+    <span class="title">直播运营助手</span>
     <span class="spacer"></span>
-    <button id="btn-danmaku" title="弹幕面板">💬 弹幕</button>
     <button id="btn-quick-report" title="快速生成日报" class="primary">📋 日报</button>
     <button id="btn-refresh" title="刷新当前页">刷新</button>
     <button id="btn-pause" title="暂停/恢复自动刷新">暂停刷新</button>
@@ -19,6 +18,16 @@
     <span id="report-cd" class="report-cd"></span>
     <span id="net-status" class="net online">网络正常</span>
     <div id="toast-container"></div>
+  </div>
+  <div id="update-banner" class="update-banner" hidden>
+    <span id="update-banner-text">正在检查更新…</span>
+    <div class="update-banner-progress" id="update-progress-wrap" hidden>
+      <div id="update-progress-bar"></div>
+    </div>
+    <div class="update-banner-actions">
+      <button id="btn-update-action" class="update-btn primary" type="button">立即下载</button>
+      <button id="btn-update-dismiss" class="update-btn" type="button">稍后</button>
+    </div>
   </div>
   <div id="loading-bar" class="loading-bar"></div>
   <div id="body">
@@ -37,7 +46,8 @@
           </div>
         </div>
       </div>
-      <!-- 内容区由主进程 BrowserView 覆盖（x=sidebarWidth, y=toolbar+tabBar） -->
+      <!-- 内容区占位：BrowserView 覆盖此槽位，并据此自适应尺寸 -->
+      <div id="content-slot"></div>
       <!-- 日报面板（report 子页时显示） -->
       <div id="report-panel" style="display:none">
         <div class="report-toolbar">

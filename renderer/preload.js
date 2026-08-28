@@ -26,6 +26,8 @@ const api = {
   openRoomManager: () => ipcRenderer.send('open-room-manager'),
   setKeepAlive: (roomId, subPage, keepAlive) =>
     ipcRenderer.send('set-keepalive', { roomId, subPage, keepAlive }),
+  // 上报内容区实测尺寸，供 BrowserView 自适应
+  reportLayoutBounds: (rect) => ipcRenderer.send('layout-bounds', rect),
   // 主进程推送的状态更新
   onStateUpdate: (cb) => ipcRenderer.on('state-update', (_e, s) => cb(s)),
   // 新私信角标
@@ -50,9 +52,14 @@ const api = {
     ipcRenderer.invoke('copy-report', { reportText }),
   // 自动日报完成通知
   onAutoReportDone: (cb) => ipcRenderer.on('auto-report-done', (_e, p) => cb(p)),
-  // 弹幕窗口控制
-  showDanmaku: () => ipcRenderer.invoke('show-danmaku'),
-  closeDanmaku: () => ipcRenderer.invoke('close-danmaku'),
+
+  // 云端升级
+  getAppInfo: () => ipcRenderer.invoke('app-get-info'),
+  getUpdaterState: () => ipcRenderer.invoke('updater-get-state'),
+  checkUpdate: () => ipcRenderer.invoke('updater-check'),
+  downloadUpdate: () => ipcRenderer.invoke('updater-download'),
+  installUpdate: () => ipcRenderer.invoke('updater-install'),
+  onUpdaterStatus: (cb) => ipcRenderer.on('updater-status', (_e, s) => cb(s)),
 };
 
 contextBridge.exposeInMainWorld('workbench', api);

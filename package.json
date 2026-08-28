@@ -1,15 +1,15 @@
 {
   "name": "live-ops-workbench",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "直播运营助手 - 多直播间监控与日报生成一体工作台",
   "main": "main/index.js",
   "author": "",
   "license": "MIT",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder --win --x64",
-    "build:portable": "electron-builder --win portable",
-    "build:dir": "electron-builder --win --dir",
+    "build": "electron-builder --win --x64 --publish never",
+    "build:portable": "electron-builder --win portable --publish never",
+    "build:dir": "electron-builder --win --dir --publish never",
     "test-regex": "node test/regex-test.js test/sample-compass.txt",
     "test-regex:douyin": "node test/regex-test.js test/sample-douyin.txt"
   },
@@ -27,16 +27,28 @@
     ],
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] },
-        { "target": "portable", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
-      "icon": null
+      "icon": null,
+      "signAndEditExecutable": false
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "shortcutName": "直播运营助手",
-      "installerSidebar": null
+      "installerSidebar": null,
+      "differentialPackage": true
     },
     "extraMetadata": {
       "main": "main/index.js"
@@ -44,9 +56,14 @@
     "asar": true,
     "asarUnpack": [
       "config/*.json"
-    ]
+    ],
+    "publish": {
+      "provider": "generic",
+      "url": "https://example.invalid/live-ops-workbench"
+    }
   },
   "dependencies": {
+    "electron-updater": "^6.1.8",
     "ws": "^8.21.1"
   },
   "devDependencies": {

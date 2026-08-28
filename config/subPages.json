@@ -27,7 +27,8 @@
     }
   },
   "layout": {
-    "sidebarWidth": 120,
+    "sidebarWidth": 128,
+    "toolbarHeight": 42,
     "tabBarHeight": 40
   },
   "urlWhitelist": [

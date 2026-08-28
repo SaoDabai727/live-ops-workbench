@@ -12,7 +12,6 @@
   const loadingBar = document.getElementById('loading-bar');
   const toastContainer = document.getElementById('toast-container');
   const btnQuickReport = document.getElementById('btn-quick-report');
-  const btnDanmaku = document.getElementById('btn-danmaku');
   const reportCd = document.getElementById('report-cd');
   // 日报面板元素
   const reportPanel = document.getElementById('report-panel');
@@ -132,12 +131,6 @@
   };
   btnReset.onclick = () => api.resetToDefault(state.currentRoomId, state.currentSubPage);
   btnManage.onclick = () => api.openRoomManager();
-
-  // —— 弹幕独立窗口 V1.34: HTTP 直连 ——
-  let danmakuOn = false;
-  btnDanmaku.onclick = () => {
-    api.switchSubPage('_toggle_danmaku');
-  };
 
   // —— 日报按钮 ——
   btnScrapeReport.onclick = async () => {
@@ -293,4 +286,107 @@
     const sec = Math.floor((ms % 60000) / 1000);
     reportCd.innerHTML = '下次日报: <span class="time">' + min + ':' + String(sec).padStart(2, '0') + '</span>';
   }, 1000);
+
+  // —— 版本号 + 云端升级横幅 ——
+  const titleEl = document.querySelector('#toolbar .title');
+  const updateBanner = document.getElementById('update-banner');
+  const updateText = document.getElementById('update-banner-text');
+  const updateAction = document.getElementById('btn-update-action');
+  const updateDismiss = document.getElementById('btn-update-dismiss');
+  const updateProgressWrap = document.getElementById('update-progress-wrap');
+  const updateProgressBar = document.getElementById('update-progress-bar');
+  let updateDismissed = false;
+
+  function setAppTitle(version) {
+    const label = version ? ('直播运营助手 v' + version) : '直播运营助手';
+    if (titleEl) titleEl.textContent = label;
+    document.title = label;
+  }
+
+  function renderUpdateBanner(s) {
+    if (!s || !updateBanner) return;
+    const hide = () => { updateBanner.hidden = true; };
+    if (updateDismissed && s.status !== 'downloading' && s.status !== 'downloaded') {
+      hide();
+      return;
+    }
+    updateProgressWrap.hidden = true;
+    if (s.status === 'available') {
+      updateDismissed = false;
+      updateBanner.hidden = false;
+      updateText.textContent = '发现新版本 v' + s.version + '（当前 v' + s.currentVersion + '）';
+      updateAction.hidden = false;
+      updateAction.textContent = '立即下载';
+      updateAction.dataset.act = 'download';
+    } else if (s.status === 'downloading') {
+      updateBanner.hidden = false;
+      updateProgressWrap.hidden = false;
+      updateProgressBar.style.width = Math.max(0, Math.min(100, s.percent || 0)).toFixed(1) + '%';
+      updateText.textContent = '正在下载 v' + (s.version || '') + '  ' + Math.floor(s.percent || 0) + '%';
+      updateAction.hidden = true;
+    } else if (s.status === 'downloaded') {
+      updateDismissed = false;
+      updateBanner.hidden = false;
+      updateText.textContent = '新版本 v' + s.version + ' 已就绪，重启后完成安装';
+      updateAction.hidden = false;
+      updateAction.textContent = '立即重启安装';
+      updateAction.dataset.act = 'install';
+    } else if (s.status === 'error' && s.error) {
+      updateBanner.hidden = false;
+      updateText.textContent = '更新失败：' + s.error;
+      updateAction.hidden = false;
+      updateAction.textContent = '重试';
+      updateAction.dataset.act = 'check';
+    } else {
+      hide();
+    }
+  }
+
+  updateAction.onclick = () => {
+    const act = updateAction.dataset.act;
+    if (act === 'download') api.downloadUpdate();
+    else if (act === 'install') api.installUpdate();
+    else api.checkUpdate();
+  };
+  updateDismiss.onclick = () => {
+    updateDismissed = true;
+    updateBanner.hidden = true;
+  };
+
+  if (api.getAppInfo) {
+    api.getAppInfo().then((info) => {
+      if (info && info.version) setAppTitle(info.version);
+      if (info && info.updater) renderUpdateBanner(info.updater);
+    }).catch(() => {});
+  }
+  if (api.onUpdaterStatus) api.onUpdaterStatus(renderUpdateBanner);
+
+  // —— BrowserView 内容区自适应：按 #content-slot 实测尺寸上报 ——
+  const contentSlot = document.getElementById('content-slot');
+  let layoutRaf = 0;
+  function reportLayoutBounds() {
+    if (!contentSlot || !api.reportLayoutBounds) return;
+    const rect = contentSlot.getBoundingClientRect();
+    api.reportLayoutBounds({
+      x: Math.max(0, Math.round(rect.left)),
+      y: Math.max(0, Math.round(rect.top)),
+      width: Math.max(0, Math.round(rect.width)),
+      height: Math.max(0, Math.round(rect.height))
+    });
+  }
+  function scheduleLayoutReport() {
+    if (layoutRaf) cancelAnimationFrame(layoutRaf);
+    layoutRaf = requestAnimationFrame(() => {
+      layoutRaf = 0;
+      reportLayoutBounds();
+    });
+  }
+  if (contentSlot && typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(scheduleLayoutReport).observe(contentSlot);
+  }
+  window.addEventListener('resize', scheduleLayoutReport);
+  api.onStateUpdate(() => scheduleLayoutReport());
+  setTimeout(reportLayoutBounds, 0);
+  setTimeout(reportLayoutBounds, 100);
+  setTimeout(reportLayoutBounds, 400);
 })();
