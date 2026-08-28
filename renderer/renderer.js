@@ -286,12 +286,16 @@
   // —— 版本号 + 云端升级横幅 ——
   const titleEl = document.querySelector('#toolbar .title');
   const updateBanner = document.getElementById('update-banner');
+  const updateIcon = document.getElementById('update-banner-icon');
   const updateText = document.getElementById('update-banner-text');
+  const updateMeta = document.getElementById('update-banner-meta');
   const updateAction = document.getElementById('btn-update-action');
   const updateDismiss = document.getElementById('btn-update-dismiss');
   const updateProgressWrap = document.getElementById('update-progress-wrap');
   const updateProgressBar = document.getElementById('update-progress-bar');
+  const updateProgressPct = document.getElementById('update-progress-pct');
   let updateDismissed = false;
+  let updateHideTimer = null;
 
   function setAppTitle(version) {
     const label = version ? ('直播运营助手 v' + version) : '直播运营助手';
@@ -299,40 +303,128 @@
     document.title = label;
   }
 
+  function formatBytes(n) {
+    const v = Number(n) || 0;
+    if (v < 1024) return v.toFixed(0) + ' B';
+    if (v < 1024 * 1024) return (v / 1024).toFixed(1) + ' KB';
+    if (v < 1024 * 1024 * 1024) return (v / (1024 * 1024)).toFixed(1) + ' MB';
+    return (v / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+  }
+
+  function formatSpeed(bps) {
+    return formatBytes(bps) + '/s';
+  }
+
+  function clearUpdateHideTimer() {
+    if (updateHideTimer) {
+      clearTimeout(updateHideTimer);
+      updateHideTimer = null;
+    }
+  }
+
+  function scheduleUpdateHide(ms) {
+    clearUpdateHideTimer();
+    updateHideTimer = setTimeout(() => {
+      updateHideTimer = null;
+      if (updateBanner) updateBanner.hidden = true;
+    }, ms);
+  }
+
+  function setUpdateMeta(text, show) {
+    if (!updateMeta) return;
+    if (!show || !text) {
+      updateMeta.hidden = true;
+      updateMeta.textContent = '';
+      return;
+    }
+    updateMeta.hidden = false;
+    updateMeta.textContent = text;
+  }
+
+  function setBannerTone(tone) {
+    if (!updateBanner) return;
+    updateBanner.classList.remove('is-error', 'is-ok', 'is-checking');
+    if (tone) updateBanner.classList.add(tone);
+  }
+
   function renderUpdateBanner(s) {
     if (!s || !updateBanner) return;
     const hide = () => { updateBanner.hidden = true; };
-    if (updateDismissed && s.status !== 'downloading' && s.status !== 'downloaded') {
+    const sticky = s.status === 'downloading' || s.status === 'downloaded' || s.status === 'checking';
+    if (updateDismissed && !sticky && s.status !== 'available') {
       hide();
       return;
     }
+
+    clearUpdateHideTimer();
     updateProgressWrap.hidden = true;
-    if (s.status === 'available') {
+    updateAction.hidden = false;
+    updateAction.disabled = false;
+    updateDismiss.hidden = false;
+    updateDismiss.textContent = '稍后';
+    if (updateIcon) updateIcon.textContent = '↑';
+
+    if (s.status === 'checking') {
       updateDismissed = false;
       updateBanner.hidden = false;
-      updateText.textContent = '发现新版本 v' + s.version + '（当前 v' + s.currentVersion + '）';
-      updateAction.hidden = false;
+      setBannerTone('is-checking');
+      if (updateIcon) updateIcon.textContent = '↻';
+      updateText.textContent = '正在检查更新…';
+      setUpdateMeta('当前 v' + (s.currentVersion || ''), true);
+      updateAction.hidden = true;
+      updateDismiss.textContent = '隐藏';
+    } else if (s.status === 'available') {
+      updateDismissed = false;
+      updateBanner.hidden = false;
+      setBannerTone('');
+      updateText.textContent = '发现新版本 v' + s.version;
+      setUpdateMeta('当前 v' + s.currentVersion + ' → 可升级到 v' + s.version, true);
       updateAction.textContent = '立即下载';
       updateAction.dataset.act = 'download';
+      updateDismiss.textContent = '稍后';
     } else if (s.status === 'downloading') {
+      updateDismissed = false;
       updateBanner.hidden = false;
+      setBannerTone('');
+      const pct = Math.max(0, Math.min(100, s.percent || 0));
       updateProgressWrap.hidden = false;
-      updateProgressBar.style.width = Math.max(0, Math.min(100, s.percent || 0)).toFixed(1) + '%';
-      updateText.textContent = '正在下载 v' + (s.version || '') + '  ' + Math.floor(s.percent || 0) + '%';
+      updateProgressBar.style.width = pct.toFixed(1) + '%';
+      if (updateProgressPct) updateProgressPct.textContent = Math.floor(pct) + '%';
+      updateText.textContent = '正在下载 v' + (s.version || '');
+      const parts = [];
+      if (s.total > 0) parts.push(formatBytes(s.transferred) + ' / ' + formatBytes(s.total));
+      if (s.bytesPerSecond > 0) parts.push(formatSpeed(s.bytesPerSecond));
+      setUpdateMeta(parts.join(' · ') || '连接中…', true);
       updateAction.hidden = true;
+      updateDismiss.hidden = true;
     } else if (s.status === 'downloaded') {
       updateDismissed = false;
       updateBanner.hidden = false;
-      updateText.textContent = '新版本 v' + s.version + ' 已就绪，重启后完成安装';
-      updateAction.hidden = false;
+      setBannerTone('is-ok');
+      if (updateIcon) updateIcon.textContent = '✓';
+      updateText.textContent = '新版本 v' + s.version + ' 已就绪';
+      setUpdateMeta('重启后完成安装，可稍后在帮助菜单再次安装', true);
       updateAction.textContent = '立即重启安装';
       updateAction.dataset.act = 'install';
+      updateDismiss.textContent = '稍后重启';
+    } else if (s.status === 'not-available') {
+      updateBanner.hidden = false;
+      setBannerTone('is-ok');
+      if (updateIcon) updateIcon.textContent = '✓';
+      updateText.textContent = '已是最新版本';
+      setUpdateMeta('当前 v' + (s.currentVersion || ''), true);
+      updateAction.hidden = true;
+      updateDismiss.textContent = '知道了';
+      scheduleUpdateHide(3200);
     } else if (s.status === 'error' && s.error) {
       updateBanner.hidden = false;
-      updateText.textContent = '更新失败：' + s.error;
-      updateAction.hidden = false;
+      setBannerTone('is-error');
+      if (updateIcon) updateIcon.textContent = '!';
+      updateText.textContent = '更新失败';
+      setUpdateMeta(String(s.error).slice(0, 160), true);
       updateAction.textContent = '重试';
       updateAction.dataset.act = 'check';
+      updateDismiss.textContent = '关闭';
     } else {
       hide();
     }
@@ -340,13 +432,16 @@
 
   updateAction.onclick = () => {
     const act = updateAction.dataset.act;
+    updateAction.disabled = true;
     if (act === 'download') api.downloadUpdate();
     else if (act === 'install') api.installUpdate();
-    else api.checkUpdate();
+    else api.checkUpdate().finally(() => { updateAction.disabled = false; });
   };
   updateDismiss.onclick = () => {
     updateDismissed = true;
+    clearUpdateHideTimer();
     updateBanner.hidden = true;
+    if (api.dismissUpdate) api.dismissUpdate();
   };
 
   if (api.getAppInfo) {

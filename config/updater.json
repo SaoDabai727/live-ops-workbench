@@ -1,15 +1,16 @@
 {
-  "version": "1.0",
-  "_readme": "默认走 GitHub Releases 云端升级。若改用国内 OSS/COS，把 provider 改为 generic，并填写 feedUrl（静态资源根地址，末尾可不带 /）。安装后也可在 %APPDATA%/live-ops-workbench/config/updater.json 覆盖。",
+  "version": "1.1",
+  "_readme": "默认 GitHub Releases；mirror 非空时经国内加速镜像拉取（generic）。安装后可在 %APPDATA%/live-ops-workbench/config/updater.json 覆盖。无镜像则 mirror 设为 \"\"。",
   "enabled": true,
   "provider": "github",
   "owner": "SaoDabai727",
   "repo": "live-ops-workbench",
+  "mirror": "https://ghfast.top/",
   "feedUrl": "",
   "channel": "latest",
   "autoCheckOnStartup": true,
   "autoDownload": false,
   "autoInstallOnAppQuit": true,
-  "checkDelayMs": 8000,
+  "checkDelayMs": 5000,
   "allowDevCheck": false
 }

@@ -20,9 +20,16 @@
     <div id="toast-container"></div>
   </div>
   <div id="update-banner" class="update-banner" hidden>
-    <span id="update-banner-text">正在检查更新…</span>
-    <div class="update-banner-progress" id="update-progress-wrap" hidden>
-      <div id="update-progress-bar"></div>
+    <div class="update-banner-icon" id="update-banner-icon" aria-hidden="true">↑</div>
+    <div class="update-banner-body">
+      <div class="update-banner-title" id="update-banner-text">正在检查更新…</div>
+      <div class="update-banner-meta" id="update-banner-meta" hidden></div>
+      <div class="update-banner-progress" id="update-progress-wrap" hidden>
+        <div class="update-progress-track">
+          <div id="update-progress-bar"></div>
+        </div>
+        <span class="update-progress-pct" id="update-progress-pct">0%</span>
+      </div>
     </div>
     <div class="update-banner-actions">
       <button id="btn-update-action" class="update-btn primary" type="button">立即下载</button>

@@ -1,6 +1,6 @@
-// updater.js — 云端升级（electron-updater generic 静态资源）
-// 改 config/updater.json 的 feedUrl 即可切换升级源，无需改代码。
-const { app, ipcMain, dialog } = require('electron');
+// updater.js — 云端升级（GitHub Releases / generic 静态资源，可选国内镜像）
+// 改 config/updater.json 即可切换升级源，无需改代码。
+const { app, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const debugLog = require('./debugLog');
@@ -9,11 +9,14 @@ const DEFAULT_CFG = {
   enabled: true,
   provider: 'generic',
   feedUrl: '',
+  mirror: '',
+  owner: 'SaoDabai727',
+  repo: 'live-ops-workbench',
   channel: 'latest',
   autoCheckOnStartup: true,
   autoDownload: false,
   autoInstallOnAppQuit: true,
-  checkDelayMs: 8000,
+  checkDelayMs: 5000,
   allowDevCheck: false
 };
 
@@ -47,12 +50,19 @@ function loadUpdaterConfig() {
   if (userCfg) Object.assign(cfg, userCfg);
   if (process.env.LIVEOPS_UPDATE_URL) {
     cfg.feedUrl = process.env.LIVEOPS_UPDATE_URL;
+    cfg.provider = 'generic';
     cfg.enabled = true;
   }
   delete cfg._readme;
   delete cfg.version;
   cfg.feedUrl = String(cfg.feedUrl || '').trim().replace(/\/+$/, '');
+  cfg.mirror = String(cfg.mirror || '').trim();
+  if (cfg.mirror && !/\/$/.test(cfg.mirror)) cfg.mirror += '/';
   return cfg;
+}
+
+function githubLatestDownloadUrl(owner, repo) {
+  return 'https://github.com/' + owner + '/' + repo + '/releases/latest/download';
 }
 
 function createUpdater({ getMainWindow }) {
@@ -68,13 +78,15 @@ function createUpdater({ getMainWindow }) {
     error: '',
     configured: false,
     enabled: false,
-    packaged: app.isPackaged
+    packaged: app.isPackaged,
+    feedLabel: ''
   };
 
   let autoUpdater = null;
   let cfg = DEFAULT_CFG;
   let lastProgressAt = 0;
   let startupTimer = null;
+  let checkingPromise = null;
 
   function snapshot() {
     return Object.assign({}, state);
@@ -114,7 +126,7 @@ function createUpdater({ getMainWindow }) {
     });
     autoUpdater.on('download-progress', (p) => {
       const now = Date.now();
-      if (now - lastProgressAt < 250 && p.percent < 99) return;
+      if (now - lastProgressAt < 200 && p.percent < 99) return;
       lastProgressAt = now;
       send({
         status: 'downloading',
@@ -141,23 +153,42 @@ function createUpdater({ getMainWindow }) {
     return autoUpdater;
   }
 
+  function resolveFeed(cfgIn) {
+    const provider = (cfgIn.provider || 'generic').toLowerCase();
+    const owner = cfgIn.owner || 'SaoDabai727';
+    const repo = cfgIn.repo || 'live-ops-workbench';
+    const isGithub = provider === 'github';
+
+    // 显式 generic feedUrl 优先
+    if (!isGithub && cfgIn.feedUrl) {
+      return { mode: 'generic', url: cfgIn.feedUrl, label: cfgIn.feedUrl, owner, repo };
+    }
+    if (isGithub && cfgIn.mirror) {
+      const origin = githubLatestDownloadUrl(owner, repo);
+      const url = cfgIn.mirror + origin;
+      return { mode: 'generic', url, label: 'GitHub镜像 ' + cfgIn.mirror, owner, repo };
+    }
+    if (isGithub) {
+      return { mode: 'github', owner, repo, label: 'GitHub ' + owner + '/' + repo };
+    }
+    return { mode: 'none', owner, repo, label: '' };
+  }
+
   function applyFeed() {
     cfg = loadUpdaterConfig();
     state.enabled = !!cfg.enabled;
     state.currentVersion = app.getVersion();
 
-    const provider = (cfg.provider || 'generic').toLowerCase();
-    const isGithub = provider === 'github';
-    const owner = cfg.owner || 'SaoDabai727';
-    const repo = cfg.repo || 'live-ops-workbench';
-    state.configured = !!(cfg.enabled && (isGithub ? (owner && repo) : cfg.feedUrl));
+    const feed = resolveFeed(cfg);
+    state.feedLabel = feed.label || '';
+    state.configured = !!(cfg.enabled && feed.mode !== 'none');
 
     if (!cfg.enabled) {
       send({ status: 'disabled', error: '云端升级未开启' });
       return false;
     }
-    if (!isGithub && !cfg.feedUrl) {
-      send({ status: 'disabled', error: '未配置 feedUrl' });
+    if (feed.mode === 'none') {
+      send({ status: 'disabled', error: '未配置升级源（GitHub 或 feedUrl）' });
       return false;
     }
     if (!app.isPackaged && !cfg.allowDevCheck) {
@@ -170,100 +201,64 @@ function createUpdater({ getMainWindow }) {
     updater.autoInstallOnAppQuit = cfg.autoInstallOnAppQuit !== false;
     updater.channel = cfg.channel || 'latest';
     updater.forceDevUpdateConfig = !app.isPackaged && !!cfg.allowDevCheck;
-    if (isGithub) {
+
+    if (feed.mode === 'github') {
       updater.setFeedURL({
         provider: 'github',
-        owner,
-        repo,
+        owner: feed.owner,
+        repo: feed.repo,
         private: !!cfg.private
       });
     } else {
       updater.setFeedURL({
-        provider: provider || 'generic',
-        url: cfg.feedUrl
+        provider: 'generic',
+        url: feed.url
       });
     }
+    log('升级源 ' + state.feedLabel);
     return true;
   }
 
   async function check({ userTriggered } = {}) {
     if (!applyFeed()) {
-      if (userTriggered) {
-        const win = getMainWindow && getMainWindow();
-        await dialog.showMessageBox(win || undefined, {
-          type: 'info',
-          title: '检查更新',
-          message: '云端升级尚未就绪',
-          detail: state.error + '\n\n默认使用 GitHub Releases 作为升级源。也可在 config/updater.json 改用 OSS 的 feedUrl。'
-        });
-      }
       return snapshot();
     }
-    try {
-      const updater = ensureUpdater();
-      if (userTriggered) {
-        const result = await updater.checkForUpdates();
-        const info = result && result.updateInfo;
-        if (state.status === 'available' || state.status === 'downloaded' || state.status === 'downloading') {
-          if (userTriggered && state.status === 'available' && !cfg.autoDownload) {
-            const win = getMainWindow && getMainWindow();
-            const box = await dialog.showMessageBox(win || undefined, {
-              type: 'info',
-              title: '发现新版本',
-              message: '发现新版本 ' + (state.version || (info && info.version) || ''),
-              detail: '当前版本 ' + state.currentVersion + '\n是否立即下载？下载完成后可选择重启安装。',
-              buttons: ['立即下载', '稍后'],
-              defaultId: 0,
-              cancelId: 1
-            });
-            if (box.response === 0) await download();
-          } else if (userTriggered && state.status === 'downloaded') {
-            const win = getMainWindow && getMainWindow();
-            const box = await dialog.showMessageBox(win || undefined, {
-              type: 'info',
-              title: '更新已就绪',
-              message: '新版本 ' + state.version + ' 已下载完成',
-              detail: '重启后即可完成安装。',
-              buttons: ['立即重启安装', '稍后'],
-              defaultId: 0,
-              cancelId: 1
-            });
-            if (box.response === 0) install();
-          }
-        } else if (state.status === 'not-available') {
-          const win = getMainWindow && getMainWindow();
-          await dialog.showMessageBox(win || undefined, {
-            type: 'info',
-            title: '检查更新',
-            message: '已是最新版本',
-            detail: '当前版本 ' + state.currentVersion
-          });
+    if (checkingPromise) return checkingPromise;
+
+    checkingPromise = (async () => {
+      try {
+        send({ status: 'checking', error: '', percent: 0 });
+        const updater = ensureUpdater();
+        await updater.checkForUpdates();
+        // 用户手动检查且已是最新：保留 not-available 状态，由渲染层短暂展示后收起
+        if (userTriggered && state.status === 'available' && cfg.autoDownload) {
+          await download();
         }
         return snapshot();
+      } catch (e) {
+        const msg = e && e.message ? e.message : String(e);
+        send({ status: 'error', error: msg });
+        return snapshot();
+      } finally {
+        checkingPromise = null;
       }
-      await updater.checkForUpdates();
-      return snapshot();
-    } catch (e) {
-      const msg = e && e.message ? e.message : String(e);
-      send({ status: 'error', error: msg });
-      if (userTriggered) {
-        const win = getMainWindow && getMainWindow();
-        await dialog.showMessageBox(win || undefined, {
-          type: 'error',
-          title: '检查更新失败',
-          message: '无法检查更新',
-          detail: msg
-        });
-      }
-      return snapshot();
-    }
+    })();
+
+    return checkingPromise;
   }
 
   async function download() {
     if (!applyFeed()) return snapshot();
     if (state.status === 'downloaded') return snapshot();
     try {
-      send({ status: 'downloading', percent: state.percent || 0, error: '' });
+      send({
+        status: 'downloading',
+        percent: state.percent || 0,
+        bytesPerSecond: 0,
+        transferred: state.transferred || 0,
+        total: state.total || 0,
+        error: ''
+      });
       await ensureUpdater().downloadUpdate();
       return snapshot();
     } catch (e) {
@@ -283,6 +278,12 @@ function createUpdater({ getMainWindow }) {
     }
   }
 
+  function dismiss() {
+    if (state.status === 'downloading') return snapshot();
+    send({ status: 'idle', error: '' });
+    return snapshot();
+  }
+
   function init() {
     applyFeed();
     ipcMain.handle('app-get-info', () => ({
@@ -298,9 +299,11 @@ function createUpdater({ getMainWindow }) {
       install();
       return { ok: true };
     });
+    ipcMain.handle('updater-dismiss', () => dismiss());
 
-    if (cfg.enabled && cfg.feedUrl && cfg.autoCheckOnStartup) {
-      const delay = Number(cfg.checkDelayMs) || 8000;
+    // GitHub / generic 均可启动自动检查（原先误要求 feedUrl，导致 GitHub 模式从不自动检查）
+    if (cfg.enabled && state.configured && cfg.autoCheckOnStartup) {
+      const delay = Number(cfg.checkDelayMs) || 5000;
       startupTimer = setTimeout(() => {
         check({ userTriggered: false }).catch((e) => log('启动检查失败 ' + (e && e.message)));
       }, delay);
@@ -312,7 +315,7 @@ function createUpdater({ getMainWindow }) {
     startupTimer = null;
   }
 
-  return { init, check, download, install, dispose, getState: snapshot };
+  return { init, check, download, install, dismiss, dispose, getState: snapshot };
 }
 
 module.exports = { createUpdater, loadUpdaterConfig };

@@ -61,6 +61,7 @@ const api = {
   checkUpdate: () => ipcRenderer.invoke('updater-check'),
   downloadUpdate: () => ipcRenderer.invoke('updater-download'),
   installUpdate: () => ipcRenderer.invoke('updater-install'),
+  dismissUpdate: () => ipcRenderer.invoke('updater-dismiss'),
   onUpdaterStatus: (cb) => ipcRenderer.on('updater-status', (_e, s) => cb(s)),
 };
 
