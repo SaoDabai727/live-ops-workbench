@@ -20,8 +20,10 @@ const api = {
   // 清除自定义 URL
   clearCustomUrl: (roomId, subPage) =>
     ipcRenderer.invoke('clear-custom-url', { roomId, subPage }),
-  // 弹出文档链接输入子窗口
-  openDocPrompt: (roomId) => ipcRenderer.invoke('open-doc-prompt', { roomId }),
+  // 弹出飞书文档链接输入子窗口（损益表 / 保价表）
+  openUrlPrompt: (roomId, subPage) => ipcRenderer.invoke('open-url-prompt', { roomId, subPage }),
+  // 兼容旧 API
+  openDocPrompt: (roomId) => ipcRenderer.invoke('open-url-prompt', { roomId, subPage: 'doc' }),
   // 打开直播间管理对话框
   openRoomManager: () => ipcRenderer.send('open-room-manager'),
   setKeepAlive: (roomId, subPage, keepAlive) =>

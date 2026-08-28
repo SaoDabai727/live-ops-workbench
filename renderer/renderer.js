@@ -88,30 +88,26 @@
       const el = document.createElement('div');
       el.className = 'tab-item' + (key === state.currentSubPage ? ' active' : '');
       el.textContent = cfg.label;
-      if (key === 'doc') {
-        el.onclick = () => {
-          const docKey = `${state.currentRoomId}_doc`;
-          const hasUrl = state.customUrls && state.customUrls[docKey];
+      el.onclick = () => {
+        // 飞书文档类：首次进入需填写链接
+        if (cfg.kind === 'feishuDoc') {
+          const urlKey = `${state.currentRoomId}_${key}`;
+          const hasUrl = state.customUrls && state.customUrls[urlKey];
           if (!hasUrl) {
-            // 通过 IPC 打开独立的子窗口输入 URL（不被 BrowserView 遮挡）
-            api.openDocPrompt(state.currentRoomId);
-          } else {
-            api.switchSubPage('doc');
+            api.openUrlPrompt(state.currentRoomId, key);
+            return;
           }
-        };
-      } else {
-        el.onclick = () => {
-          // 进入后台私信 → 清零当前房间未读计数 + 设置消息基线
-          if (key === 'privateMsg') {
-            if (msgCounts[state.currentRoomId]) {
-              delete msgCounts[state.currentRoomId];
-              renderSidebar();
-            }
-            api.setMsgBaseline(state.currentRoomId);
+        }
+        // 进入后台私信 → 清零当前房间未读计数 + 设置消息基线
+        if (key === 'privateMsg') {
+          if (msgCounts[state.currentRoomId]) {
+            delete msgCounts[state.currentRoomId];
+            renderSidebar();
           }
-          api.switchSubPage(key);
-        };
-      }
+          api.setMsgBaseline(state.currentRoomId);
+        }
+        api.switchSubPage(key);
+      };
       tabbar.appendChild(el);
     });
   }

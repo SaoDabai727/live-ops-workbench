@@ -51,6 +51,48 @@ function initConfig() {
       if (fs.existsSync(src)) fs.copyFileSync(src, dest);
     }
   });
+  // 打包升级后：把内置 subPages 的新增页/改名合并进用户配置
+  syncSubPagesFromBundle(srcDir, userDir);
+}
+
+function syncSubPagesFromBundle(srcDir, userDir) {
+  const srcPath = path.join(srcDir, 'subPages.json');
+  const destPath = path.join(userDir, 'subPages.json');
+  if (!fs.existsSync(srcPath) || !fs.existsSync(destPath)) return;
+  try {
+    const bundled = loadJson(srcPath);
+    const user = loadJson(destPath);
+    if (!bundled || !bundled.subPages || !user || !user.subPages) return;
+    let changed = false;
+    Object.entries(bundled.subPages).forEach(([key, cfg]) => {
+      if (!user.subPages[key]) {
+        user.subPages[key] = cfg;
+        changed = true;
+      } else {
+        // 同步标签与 kind（保留用户可能改过的 defaultUrl）
+        if (cfg.label && user.subPages[key].label !== cfg.label) {
+          user.subPages[key].label = cfg.label;
+          changed = true;
+        }
+        if (cfg.kind && user.subPages[key].kind !== cfg.kind) {
+          user.subPages[key].kind = cfg.kind;
+          changed = true;
+        }
+      }
+    });
+    // 合并飞书白名单域名
+    if (Array.isArray(bundled.urlWhitelist)) {
+      const set = new Set(user.urlWhitelist || []);
+      bundled.urlWhitelist.forEach((d) => {
+        if (!set.has(d)) {
+          set.add(d);
+          changed = true;
+        }
+      });
+      user.urlWhitelist = Array.from(set);
+    }
+    if (changed) saveJson(destPath, user);
+  } catch (e) {}
 }
 
 // ------ 迁移旧 A/B 配置（首次运行时执行）------

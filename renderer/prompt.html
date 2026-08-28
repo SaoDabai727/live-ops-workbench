@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'">
-  <title>设置文档链接</title>
+  <title>设置飞书文档链接</title>
   <style>
     :root {
       --bg: #0A0E1A; --surface: #111827; --surface-2: #1F2937;
@@ -43,9 +43,9 @@
 </head>
 <body>
   <div class="box">
-    <h2>设置文档链接</h2>
-    <p class="hint">请输入你的飞书文档链接</p>
-    <input id="url-input" type="text" placeholder="https://your-doc.feishu.cn/..." autofocus />
+    <h2 id="prompt-title">设置飞书文档链接</h2>
+    <p class="hint" id="prompt-hint">请输入飞书文档链接</p>
+    <input id="url-input" type="text" placeholder="https://xxx.feishu.cn/..." autofocus />
     <div class="actions">
       <button id="btn-cancel">取消</button>
       <button id="btn-save" class="primary">保存</button>

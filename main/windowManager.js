@@ -295,8 +295,9 @@ function createWindowManager({ mainWindow }) {
     });
     ipcMain.on('reset-to-default', (e, { roomId, subPage }) => {
       appState.pages[roomId][subPage].lastUrl = '';
-      // 文档页复位时同时清除自定义 URL，下次点击可重新输入
-      if (subPage === 'doc') {
+      // 飞书文档类子页复位时清除自定义 URL，下次点击可重新输入
+      const spCfg = config.subPages[subPage] || {};
+      if (spCfg.kind === 'feishuDoc' || subPage === 'doc' || subPage === 'baojia') {
         const custom = loadCustomUrls();
         delete custom[`${roomId}_${subPage}`];
         saveCustomUrls(custom);
@@ -330,25 +331,29 @@ function createWindowManager({ mainWindow }) {
       pushState();
       return true;
     });
-    // 弹出独立的子窗口用于输入文档链接（不被 BrowserView 遮挡）
-    ipcMain.handle('open-doc-prompt', (event, { roomId }) => {
+    // 弹出独立子窗口输入飞书文档链接（损益表 / 保价表等）
+    function openFeishuPrompt(roomId, subPage) {
+      const sp = config.subPages[subPage] || {};
+      const label = sp.label || '飞书文档';
       return new Promise((resolve) => {
         createPromptWindow({
+          title: '设置' + label + '链接',
+          hint: '请输入「' + label + '」的飞书文档网页地址',
+          placeholder: 'https://xxx.feishu.cn/...',
           onSubmit: (url) => {
             const custom = loadCustomUrls();
-            custom[`${roomId}_doc`] = url;
+            custom[`${roomId}_${subPage}`] = url;
             saveCustomUrls(custom);
             pushState();
-            // 保存后自动切换到文档页
-            setTimeout(() => showView(roomId, 'doc'), 50);
+            setTimeout(() => showView(roomId, subPage), 50);
             resolve(true);
           },
-          onCancel: () => {
-            resolve(false);
-          }
+          onCancel: () => resolve(false)
         });
       });
-    });
+    }
+    ipcMain.handle('open-url-prompt', (event, { roomId, subPage }) => openFeishuPrompt(roomId, subPage));
+    ipcMain.handle('open-doc-prompt', (event, { roomId }) => openFeishuPrompt(roomId, 'doc'));
     // ====== 日报系统（融合 A 的日报助手能力）======
     // 生成日报：抓取 KPI（画像来自房间配置，需先去人群页单独抓取）
     ipcMain.handle('generate-report', async (event, { roomId }) => {

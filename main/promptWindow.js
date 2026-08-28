@@ -5,14 +5,20 @@
 const { BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 
-function createPromptWindow({ onSubmit, onCancel }) {
+function createPromptWindow({
+  title = '设置飞书文档链接',
+  hint = '请输入飞书文档链接',
+  placeholder = 'https://xxx.feishu.cn/...',
+  onSubmit,
+  onCancel
+} = {}) {
   const win = new BrowserWindow({
     width: 460,
     height: 220,
     resizable: false,
     minimizable: false,
     maximizable: false,
-    title: '设置文档链接',
+    title,
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, '..', 'renderer', 'prompt.js'),
@@ -23,6 +29,10 @@ function createPromptWindow({ onSubmit, onCancel }) {
   });
 
   win.loadFile(path.join(__dirname, '..', 'renderer', 'prompt.html'));
+
+  win.webContents.on('did-finish-load', () => {
+    win.webContents.send('prompt-init', { title, hint, placeholder });
+  });
 
   const submitHandler = (event, url) => {
     if (event.sender !== win.webContents) return;

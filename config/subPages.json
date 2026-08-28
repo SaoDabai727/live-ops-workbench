@@ -21,7 +21,14 @@
       "refreshInterval": 0
     },
     "doc": {
-      "label": "文档",
+      "label": "损益表",
+      "kind": "feishuDoc",
+      "defaultUrl": "",
+      "refreshInterval": 0
+    },
+    "baojia": {
+      "label": "保价表",
+      "kind": "feishuDoc",
       "defaultUrl": "",
       "refreshInterval": 0
     }
@@ -35,7 +42,13 @@
     "buyin.jinritemai.com",
     "compass.jinritemai.com",
     "www.douyin.com",
-    "jinritemai.com"
+    "jinritemai.com",
+    "feishu.cn",
+    "www.feishu.cn",
+    "bytedance.feishu.cn",
+    "docs.feishu.cn",
+    "larksuite.com",
+    "www.larksuite.com"
   ],
   "authCallbackSchemes": ["myapp://callback", "http://127.0.0.1:0/callback"],
   "keepAliveMax": 2,
