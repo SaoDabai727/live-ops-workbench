@@ -6,9 +6,8 @@ const PAGE_SCRIPT = path.join(__dirname, 'explainClicker.page.js');
 let cached = '';
 
 function getInjectSource() {
-  if (!cached) {
-    cached = fs.readFileSync(PAGE_SCRIPT, 'utf8');
-  }
+  // 开发时每次读盘，避免改完浮层样式仍命中旧缓存
+  cached = fs.readFileSync(PAGE_SCRIPT, 'utf8');
   return cached;
 }
 

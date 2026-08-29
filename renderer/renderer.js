@@ -159,7 +159,7 @@
   btnScrapeReport.onclick = async () => {
     btnScrapeReport.disabled = true;
     reportStatus.textContent = '正在抓取直播大屏数据...';
-    reportStatus.style.color = '#00E5C0';
+    reportStatus.style.color = '#E8873A';
     try {
       const result = await api.generateReport(state.currentRoomId);
       if (result.error) {
@@ -169,7 +169,7 @@
       } else {
         reportEditor.value = result.report;
         reportStatus.textContent = '生成完成 ' + new Date().toLocaleTimeString('zh-CN', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
-        reportStatus.style.color = '#00E5C0';
+        reportStatus.style.color = '#E8873A';
       }
     } catch (e) {
       reportEditor.value = '异常：' + (e.message || '未知错误');
@@ -182,7 +182,7 @@
   btnScrapeProfile.onclick = async () => {
     btnScrapeProfile.disabled = true;
     reportStatus.textContent = '正在从人群页抓取画像...';
-    reportStatus.style.color = '#00E5C0';
+    reportStatus.style.color = '#E8873A';
     try {
       const res = await api.scrapeProfile(state.currentRoomId);
       if (res.error) {
@@ -190,7 +190,7 @@
         reportStatus.style.color = '#EF4444';
       } else {
         reportStatus.textContent = '画像已抓取，点击「生成日报」更新日报';
-        reportStatus.style.color = '#00E5C0';
+        reportStatus.style.color = '#E8873A';
         // 房间配置已自动更新，下次生成日报会包含新画像
       }
     } catch (e) {
@@ -205,7 +205,7 @@
     try {
       await api.copyReport(text);
       reportStatus.textContent = '已复制到剪贴板';
-      reportStatus.style.color = '#00E5C0';
+      reportStatus.style.color = '#E8873A';
     } catch (e) {
       reportStatus.textContent = '复制失败';
       reportStatus.style.color = '#EF4444';
@@ -219,7 +219,7 @@
       const res = await api.saveReport(state.currentRoomId, text);
       if (res.ok) {
         reportStatus.textContent = '已保存到历史';
-        reportStatus.style.color = '#00E5C0';
+        reportStatus.style.color = '#E8873A';
       } else {
         reportStatus.textContent = '保存失败：' + (res.error || '未知');
         reportStatus.style.color = '#EF4444';
@@ -280,7 +280,7 @@
     if (state && state.currentRoomId === roomId && state.currentSubPage === 'report') {
       reportEditor.value = report;
       reportStatus.textContent = '自动更新 ' + time;
-      reportStatus.style.color = '#00E5C0';
+      reportStatus.style.color = '#E8873A';
     }
   });
 

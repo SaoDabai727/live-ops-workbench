@@ -10,7 +10,7 @@
   const PANEL_ID = 'explain-auto-click-root';
   const STORAGE_KEY = 'explain-auto-click-settings';
   const LOCK_KEY = 'explain-auto-click-lock';
-  const DEFAULTS = { intervalSec: 15, running: false, mode: '1-2', cursor: 0 };
+  const DEFAULTS = { intervalSec: 15, running: false, mode: '1-2', cursor: 0, collapsed: true };
   const EXPLAIN_TEXTS = new Set(['讲解', '取消讲解', '结束讲解']);
   const EXTRA_BTN_TEXTS = new Set(['讲解中']);
 
@@ -404,42 +404,66 @@
     host.id = PANEL_ID;
     host.innerHTML = `
       <div id="explain-box" style="
-        position:fixed;top:72px;right:12px;z-index:2147483647;width:210px;
-        padding:10px;border-radius:10px;background:#111827;color:#fff;
-        font:12px/1.35 Microsoft YaHei UI,Microsoft YaHei,sans-serif;
-        border:2px solid #f5b94a;box-shadow:0 8px 24px rgba(0,0,0,.35);
+        position:fixed;top:64px;right:8px;z-index:2147483647;width:148px;
+        padding:6px 7px;border-radius:8px;background:rgba(33,28,24,.94);color:#F3EEE7;
+        font:11px/1.3 Segoe UI,PingFang SC,Microsoft YaHei UI,Microsoft YaHei,sans-serif;
+        border:1px solid rgba(232,135,58,.45);box-shadow:0 6px 18px rgba(0,0,0,.35);
+        backdrop-filter:blur(6px);
       ">
-        <div id="explain-drag" style="font-weight:800;color:#f5b94a;cursor:move;font-size:13px;margin-bottom:8px;">
-          自动点讲解
+        <div id="explain-mini" style="display:none;align-items:center;gap:6px;">
+          <span id="explain-mini-drag" style="flex:1;font-weight:700;color:#E8873A;cursor:move;font-size:11px;user-select:none;">讲解</span>
+          <span id="explain-mini-state" style="color:#A89F94;font-size:10px;">停</span>
+          <button id="explain-expand" type="button" title="展开" style="height:20px;padding:0 6px;border:1px solid #3A342E;border-radius:4px;background:#2A241F;color:#F3EEE7;cursor:pointer;font-size:10px;">展开</button>
         </div>
-        <label style="display:flex;align-items:center;gap:6px;color:#9ca3af;margin-bottom:6px;">
-          模式
-          <select id="explain-mode" style="flex:1;height:28px;border-radius:6px;border:1px solid #374151;background:#030712;color:#fff;">
-            <option value="1-2">1号↔2号轮流</option>
-            <option value="1">仅1号</option>
-            <option value="all">全部轮流</option>
-          </select>
-        </label>
-        <label style="display:flex;align-items:center;gap:6px;color:#9ca3af;margin-bottom:8px;">
-          间隔
-          <input id="explain-interval" type="number" min="8" max="120" step="1" style="
-            width:56px;height:28px;border-radius:6px;border:1px solid #374151;background:#030712;color:#fff;padding:0 6px;
-          " />
-          秒
-        </label>
-        <div style="display:flex;gap:6px;">
-          <button id="explain-start" type="button" style="flex:1;height:30px;border:0;border-radius:6px;background:#f5b94a;color:#111;font-weight:800;cursor:pointer;font-size:12px;">开始</button>
-          <button id="explain-stop" type="button" style="flex:1;height:30px;border:0;border-radius:6px;background:#374151;color:#fff;cursor:pointer;font-size:12px;">停止</button>
-          <button id="explain-once" type="button" style="flex:1;height:30px;border:0;border-radius:6px;background:#374151;color:#fff;cursor:pointer;font-size:12px;">点一次</button>
+        <div id="explain-full">
+          <div style="display:flex;align-items:center;gap:4px;margin-bottom:5px;">
+            <div id="explain-drag" style="flex:1;font-weight:700;color:#E8873A;cursor:move;font-size:11px;user-select:none;">
+              自动点讲解
+            </div>
+            <button id="explain-collapse" type="button" title="收起" style="height:18px;padding:0 5px;border:1px solid #3A342E;border-radius:4px;background:#2A241F;color:#A89F94;cursor:pointer;font-size:10px;">收起</button>
+          </div>
+          <label style="display:flex;align-items:center;gap:4px;color:#A89F94;margin-bottom:4px;font-size:10px;">
+            模式
+            <select id="explain-mode" style="flex:1;height:22px;border-radius:4px;border:1px solid #3A342E;background:#161310;color:#F3EEE7;font-size:10px;">
+              <option value="1-2">1↔2</option>
+              <option value="1">仅1</option>
+              <option value="all">全部</option>
+            </select>
+          </label>
+          <label style="display:flex;align-items:center;gap:4px;color:#A89F94;margin-bottom:5px;font-size:10px;">
+            间隔
+            <input id="explain-interval" type="number" min="8" max="120" step="1" style="
+              width:40px;height:22px;border-radius:4px;border:1px solid #3A342E;background:#161310;color:#F3EEE7;padding:0 4px;font-size:10px;
+            " />
+            秒
+          </label>
+          <div style="display:flex;gap:4px;">
+            <button id="explain-start" type="button" style="flex:1;height:24px;border:0;border-radius:4px;background:#E8873A;color:#1A120C;font-weight:700;cursor:pointer;font-size:10px;">开始</button>
+            <button id="explain-stop" type="button" style="flex:1;height:24px;border:1px solid #3A342E;border-radius:4px;background:#2A241F;color:#F3EEE7;cursor:pointer;font-size:10px;">停</button>
+            <button id="explain-once" type="button" style="flex:1;height:24px;border:1px solid #3A342E;border-radius:4px;background:#2A241F;color:#F3EEE7;cursor:pointer;font-size:10px;">一次</button>
+          </div>
+          <div id="explain-auto-status" style="margin-top:4px;color:#A89F94;font-size:9px;max-height:28px;overflow:auto;line-height:1.25;"></div>
         </div>
-        <div id="explain-auto-status" style="margin-top:6px;color:#9ca3af;font-size:11px;max-height:48px;overflow:auto;"></div>
       </div>
     `;
     (document.body || document.documentElement).appendChild(host);
 
     const box = host.querySelector('#explain-box');
+    const full = host.querySelector('#explain-full');
+    const mini = host.querySelector('#explain-mini');
     const interval = host.querySelector('#explain-interval');
     const mode = host.querySelector('#explain-mode');
+
+    function setCollapsed(collapsed) {
+      settings.collapsed = !!collapsed;
+      saveSettings({ collapsed: settings.collapsed });
+      full.style.display = collapsed ? 'none' : 'block';
+      mini.style.display = collapsed ? 'flex' : 'none';
+      box.style.width = collapsed ? 'auto' : '148px';
+      box.style.minWidth = collapsed ? '96px' : '';
+      syncPanel();
+    }
+
     interval.value = String(settings.intervalSec);
     mode.value = settings.mode || '1-2';
     host.querySelector('#explain-start').addEventListener('click', startRunning);
@@ -447,6 +471,8 @@
     host.querySelector('#explain-once').addEventListener('click', () => {
       clickCurrentTarget();
     });
+    host.querySelector('#explain-collapse').addEventListener('click', () => setCollapsed(true));
+    host.querySelector('#explain-expand').addEventListener('click', () => setCollapsed(false));
     interval.addEventListener('change', () => {
       saveSettings({ intervalSec: Math.max(8, Number(interval.value) || 15) });
       interval.value = String(settings.intervalSec);
@@ -457,12 +483,24 @@
     });
     setStatus(lastStatus);
     makeDraggable(box, host.querySelector('#explain-drag'));
-    syncPanel();
+    makeDraggable(box, host.querySelector('#explain-mini-drag'));
+    // 默认收起，少挡画面；需要调参数再点展开
+    setCollapsed(settings.collapsed !== false);
     setStatus(`已加载。当前${modeLabel()}，点一次会点 ${currentTargetNo()} 号。`);
   }
 
   window.__explainAutoClickForceShow = () => {
     injectPanel(true);
+    const root = document.getElementById(PANEL_ID);
+    const full = root?.querySelector('#explain-full');
+    const mini = root?.querySelector('#explain-mini');
+    const box = root?.querySelector('#explain-box');
+    if (full && mini && box) {
+      full.style.display = 'block';
+      mini.style.display = 'none';
+      box.style.width = '148px';
+      saveSettings({ collapsed: false });
+    }
     setStatus(`已重新显示面板。当前${modeLabel()}，下次 ${currentTargetNo()} 号。`);
   };
 
@@ -470,8 +508,13 @@
     const root = document.getElementById(PANEL_ID);
     const start = root?.querySelector('#explain-start');
     const mode = root?.querySelector('#explain-mode');
+    const miniState = root?.querySelector('#explain-mini-state');
     if (start) start.textContent = settings.running ? '运行中' : '开始';
     if (mode && mode.value !== settings.mode) mode.value = settings.mode || '1-2';
+    if (miniState) {
+      miniState.textContent = settings.running ? '跑' : '停';
+      miniState.style.color = settings.running ? '#5BAE6E' : '#A89F94';
+    }
   }
 
   function makeDraggable(box, handle) {
