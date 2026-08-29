@@ -10,7 +10,6 @@ const { createPromptWindow } = require('./promptWindow');
 const { createRoomManagerWindow } = require('./roomManager');
 const { saveRooms, loadRooms, loadNavState, saveNavState, saveReport, loadLastReport } = require('./config');
 const { generateReport, scrapeProfile } = require('./reportManager');
-const { createReportScheduler } = require('./reportScheduler');
 const { forceExplainPanel } = require('./explainManager');
 const { looksLikeCompassAccessDeniedPage, isPlaceholderRoomId, parseLiveRoomId } = require('./compassUrl');
 const { clipboard } = require('electron');
@@ -22,8 +21,7 @@ function createWindowManager({ mainWindow }) {
   const appState = {
     currentRoomId: config.liveRooms[0] ? config.liveRooms[0].id : 'live1',
     currentSubPage: 'juliang',
-    pages: {},
-    nextReportTime: null
+    pages: {}
   };
   config.liveRooms.forEach(r => {
     appState.pages[r.id] = {};
@@ -113,14 +111,9 @@ function createWindowManager({ mainWindow }) {
     }
   });
 
-  // V1.22 全页常驻 + 定时抓取
+  // 全页常驻（保活视图）
   const keepAliveSet = new Set();
   const isKeepAlive = (roomId, subPage) => keepAliveSet.has(`${roomId}_${subPage}`);
-  const scheduler = createReportScheduler({ factory, config, saveReport, mainWindow });
-  scheduler.setOnTick((nextMs) => {
-    appState.nextReportTime = nextMs;
-    pushState();
-  });
 
   function pushState() {
     if (mainWindow) {
@@ -526,12 +519,10 @@ function createWindowManager({ mainWindow }) {
       setTimeout(syncLayout, 50);
     });
     showView(appState.currentRoomId, appState.currentSubPage);
-    scheduler.start();
   }
 
   function dispose() {
     debugLog.log('[WM] dispose');
-    scheduler.stop();
     if (bg && bg.dispose) bg.dispose();
     Object.keys(keepAliveSet).forEach(k => keepAliveSet.delete(k));
   }

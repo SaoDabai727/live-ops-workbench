@@ -53,8 +53,6 @@ const api = {
     ipcRenderer.invoke('save-report', { roomId, reportText }),
   copyReport: (reportText) =>
     ipcRenderer.invoke('copy-report', { reportText }),
-  // 自动日报完成通知
-  onAutoReportDone: (cb) => ipcRenderer.on('auto-report-done', (_e, p) => cb(p)),
 
   // 自动点讲解：强制在当前页显示控制面板
   forceExplainPanel: () => ipcRenderer.invoke('explain-force-panel'),

@@ -255,8 +255,12 @@ function loadRooms() {
 }
 
 function saveRooms(liveRooms) {
-  saveJson(ROOMS_PATH, { version: '2.0', liveRooms });
-  config.liveRooms = liveRooms;
+  const cleaned = (liveRooms || []).map((r) => {
+    const { autoReport, ...rest } = r || {};
+    return rest;
+  });
+  saveJson(ROOMS_PATH, { version: '2.0', liveRooms: cleaned });
+  config.liveRooms = cleaned;
 }
 
 // ------ 导航状态持久化 ------

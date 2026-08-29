@@ -13,7 +13,6 @@
   const toastContainer = document.getElementById('toast-container');
   const btnQuickReport = document.getElementById('btn-quick-report');
   const btnExplainPanel = document.getElementById('btn-explain-panel');
-  const reportCd = document.getElementById('report-cd');
   // 日报面板元素
   const reportPanel = document.getElementById('report-panel');
   const reportEditor = document.getElementById('report-editor');
@@ -67,6 +66,27 @@
   }
 
 
+  function fitSidebarWidth() {
+    // 按最长房间名自动调宽（108–260），避免固定宽度截断或留白过多
+    const probe = document.createElement('span');
+    probe.style.cssText = 'position:absolute;left:-9999px;top:0;visibility:hidden;white-space:nowrap;font:500 13px "Segoe UI","PingFang SC","Microsoft YaHei UI","Microsoft YaHei",sans-serif';
+    document.body.appendChild(probe);
+    let maxText = 0;
+    state.liveRooms.forEach((room) => {
+      probe.textContent = room.label || '';
+      maxText = Math.max(maxText, probe.offsetWidth);
+    });
+    probe.textContent = '直播间';
+    const headLabelW = probe.offsetWidth;
+    probe.remove();
+    // 左右内边距 + 左边框 + 角标预留 + 标题区计数徽标
+    const chrome = 14 + 12 + 3 + 8 + 32;
+    const headChrome = 14 + 14 + 28;
+    const next = Math.min(260, Math.max(108, Math.max(maxText + chrome, headLabelW + headChrome)));
+    sidebar.style.setProperty('--sidebar-w', next + 'px');
+    if (typeof scheduleLayoutReport === 'function') scheduleLayoutReport();
+  }
+
   function renderSidebar() {
     sidebar.innerHTML = '';
     const head = document.createElement('div');
@@ -91,6 +111,7 @@
       el.onclick = () => api.switchRoom(room.id);
       sidebar.appendChild(el);
     });
+    requestAnimationFrame(fitSidebarWidth);
   }
 
   function renderTabbar() {
@@ -267,23 +288,6 @@
     netStatus.className = 'net ' + (online ? 'online' : 'offline');
   });
 
-  // V1.10 自动日报通知
-  api.onAutoReportDone(({ roomId, time, report }) => {
-    const room = state ? state.liveRooms.find(r => r.id === roomId) : null;
-    const label = room ? room.label : roomId;
-    const toast = document.createElement('div');
-    toast.className = 'toast';
-    toast.innerHTML = '<div class="toast-title">' + label + ' · 自动日报</div><div class="toast-body">' + time + ' 已生成</div>';
-    toastContainer.appendChild(toast);
-    setTimeout(() => { toast.style.opacity = '0'; toast.style.transform = 'translateX(20px)'; setTimeout(() => toast.remove(), 250); }, 4000);
-    // 如果当前正在该房间的日报页，自动刷新
-    if (state && state.currentRoomId === roomId && state.currentSubPage === 'report') {
-      reportEditor.value = report;
-      reportStatus.textContent = '自动更新 ' + time;
-      reportStatus.style.color = '#E8873A';
-    }
-  });
-
   // 渲染进程侧网络状态（主进程 onLine 事件补充）
   window.addEventListener('online', () => {
     netStatus.textContent = '网络正常';
@@ -299,16 +303,6 @@
     const cnt = Math.floor(Math.random() * 5) + 1;
     api.testNewMessage(rid, cnt);
   };
-
-  // V1.22 日报倒计时（每秒更新）
-  setInterval(() => {
-    if (!state || !state.nextReportTime) { reportCd.innerHTML = ''; return; }
-    const ms = state.nextReportTime - Date.now();
-    if (ms <= 0) { reportCd.innerHTML = '<span class="time">抓取中...</span>'; return; }
-    const min = Math.floor(ms / 60000);
-    const sec = Math.floor((ms % 60000) / 1000);
-    reportCd.innerHTML = '下次日报: <span class="time">' + min + ':' + String(sec).padStart(2, '0') + '</span>';
-  }, 1000);
 
   // —— 版本号 + 云端升级横幅 ——
   const titleEl = document.querySelector('#toolbar .title');

@@ -160,10 +160,6 @@ body {
   border-radius: 6px;
   font-weight: 500;
 }
-.report-cd {
-  font-size: 11px; color: var(--muted); letter-spacing: .2px; margin-right: 4px;
-}
-.report-cd .time { color: var(--accent-bright); font-weight: 600; }
 .net.online {
   color: var(--ok);
   background: rgba(91, 174, 110, 0.1);
@@ -183,12 +179,17 @@ body {
 }
 
 #sidebar {
-  width: 148px;
-  flex: 0 0 148px;
+  --sidebar-w: 148px;
+  width: var(--sidebar-w);
+  flex: 0 0 var(--sidebar-w);
+  min-width: 108px;
+  max-width: 260px;
   background: var(--surface);
   border-right: 1px solid var(--border);
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 12px 0 14px;
+  transition: width 0.18s ease, flex-basis 0.18s ease;
 }
 #sidebar::-webkit-scrollbar { width: 3px; }
 #sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }

@@ -24,17 +24,15 @@ window.addEventListener('DOMContentLoaded', () => {
       const card = document.createElement('div');
       card.className = 'room-card';
 
-      // 确保 anchors 数组存在
       if (!Array.isArray(room.anchors)) room.anchors = [];
 
-      // ---- 卡片头部：名称 + Room ID + 删除 ----
       const header = document.createElement('div');
       header.className = 'card-header';
       header.innerHTML =
         '<span class="card-num">#' + (i + 1) + '</span>' +
         '<input class="input-name" value="' + escapeHtml(room.label) + '" placeholder="直播间名" />' +
         '<input class="input-id" value="' + escapeHtml(room.roomId) + '" placeholder="Room ID" />' +
-        (rooms.length > 1 ? '<button class="card-del">×</button>' : '');
+        (rooms.length > 1 ? '<button class="card-del" title="删除直播间">×</button>' : '<span></span>');
 
       const nameInput = header.querySelector('.input-name');
       const idInput = header.querySelector('.input-id');
@@ -46,31 +44,23 @@ window.addEventListener('DOMContentLoaded', () => {
         delBtn.addEventListener('click', () => { rooms.splice(i, 1); render(); });
       }
 
-      // ---- 字段区：时长 + 用户画像 ----
       const fields = document.createElement('div');
-      fields.className = 'card-fields';
+      fields.className = 'meta-row';
       fields.innerHTML =
         '<div class="field duration">' +
           '<span class="field-label">直播时长</span>' +
           '<input class="input-duration" value="' + escapeHtml(room.liveDuration || '15h') + '" placeholder="15h" />' +
         '</div>' +
-        '<div class="field auto-report">' +
-          '<span class="field-label">自动日报</span>' +
-          '<label class="switch-label"><input type="checkbox" class="input-autoReport"' + (room.autoReport !== false ? ' checked' : '') + ' /><span class="switch-track"></span></label>' +
-        '</div>' +
         '<div class="field profile">' +
           '<span class="field-label">看播核心用户画像</span>' +
-          '<textarea class="input-profile" placeholder="女性为主，25-35岁...">' + escapeHtml(room.userProfileText || '') + '</textarea>' +
+          '<textarea class="input-profile" rows="3" placeholder="例如：女 63% · 25-35岁为主…">' + escapeHtml(room.userProfileText || '') + '</textarea>' +
         '</div>';
 
       const durationInput = fields.querySelector('.input-duration');
       const profileInput = fields.querySelector('.input-profile');
-      const autoReportInput = fields.querySelector('.input-autoReport');
       durationInput.addEventListener('input', () => { room.liveDuration = durationInput.value; });
       profileInput.addEventListener('input', () => { room.userProfileText = profileInput.value; });
-      autoReportInput.addEventListener('change', () => { room.autoReport = autoReportInput.checked; });
 
-      // ---- 主播区域 ----
       const anchorSection = document.createElement('div');
       anchorSection.className = 'anchor-section';
       anchorSection.innerHTML =
@@ -85,6 +75,13 @@ window.addEventListener('DOMContentLoaded', () => {
 
       function renderAnchors() {
         anchorList.innerHTML = '';
+        if (!room.anchors.length) {
+          const empty = document.createElement('div');
+          empty.className = 'anchor-empty';
+          empty.textContent = '暂无主播，点击右上角添加';
+          anchorList.appendChild(empty);
+          return;
+        }
         room.anchors.forEach((a, idx) => {
           a.enabled = a.enabled !== false;
           const row = document.createElement('div');
@@ -117,12 +114,10 @@ window.addEventListener('DOMContentLoaded', () => {
       btnAddAnchor.addEventListener('click', () => {
         room.anchors.push({ name: '', enabled: true });
         renderAnchors();
-        // 聚焦新主播的输入框
         const lastInput = anchorList.querySelector('.anchor-row:last-child .anchor-name');
         if (lastInput) lastInput.focus();
       });
 
-      // 组装卡片
       card.appendChild(header);
       card.appendChild(fields);
       card.appendChild(anchorSection);
@@ -139,8 +134,7 @@ window.addEventListener('DOMContentLoaded', () => {
       roomId: '',
       anchors: [],
       liveDuration: '15h',
-      userProfileText: '',
-      autoReport: true
+      userProfileText: ''
     });
     render();
     setTimeout(() => { container.lastChild?.scrollIntoView({ behavior: 'smooth' }); }, 50);
@@ -158,8 +152,7 @@ window.addEventListener('DOMContentLoaded', () => {
       roomId: r.roomId || '',
       anchors: (r.anchors || []).map(a => ({ name: a.name || '未命名', enabled: a.enabled !== false })),
       liveDuration: r.liveDuration || '15h',
-      userProfileText: r.userProfileText || '',
-      autoReport: r.autoReport !== false
+      userProfileText: r.userProfileText || ''
     }));
     ipcRenderer.send('room-mgr-save', clean);
   });
