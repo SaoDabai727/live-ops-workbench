@@ -6,6 +6,11 @@ const { config, getDefaultUrl } = require('./config');
 const debugLog = require('./debugLog');
 const { ensurePartitionGuarded, isBlockedUrl, isExternalProtocol } = require('./protocolGuard');
 const { attachExplainAutoClick } = require('./explainManager');
+const {
+  looksLikeCompassAccessDeniedPage,
+  isPlaceholderRoomId,
+  parseLiveRoomId
+} = require('./compassUrl');
 
 const WEBVIEW_PRELOAD = path.join(__dirname, 'webviewPreload.js');
 
@@ -17,6 +22,7 @@ function createWebViewFactory({ authManager, onViewEvent } = {}) {
   const viewPool = new Map();        // partition -> BrowserView[]
   const keptAliveViews = new Map();  // `${roomId}_${subPage}` -> { view, meta }
   const preloadedViews = new Map();  // `${roomId}_${subPage}` -> BrowserView (后台预加载)
+  const scrapeViews = new Map();     // `${roomId}_${subPage}` -> 专用抓取视图（不进 UI 保活）
   const viewRegistry = new Map();    // webContents.id -> { roomId, subPage, partition }
   let currentView = null;
   let currentMeta = null;
@@ -258,18 +264,36 @@ function createWebViewFactory({ authManager, onViewEvent } = {}) {
     } else if (keptAliveViews.has(key)) {
       branch = 'KEEPALIVE';
       target = keptAliveViews.get(key).view;
-      // 保活视图保留原有状态，无需额外导航
+      // 保活视图保留原有状态，无需额外导航；若已被后台冲成无权页则自愈
+      try {
+        const cur = target.webContents.getURL();
+        const recoverTo = (lastUrl && lastUrl !== 'about:blank' && !looksLikeCompassAccessDeniedPage(lastUrl)
+          && !isPlaceholderRoomId(parseLiveRoomId(lastUrl)))
+          ? lastUrl
+          : getDefaultUrl(roomId, subPage);
+        const needRecover = subPage === 'daping' && (
+          looksLikeCompassAccessDeniedPage(cur) ||
+          (isPlaceholderRoomId(parseLiveRoomId(cur)) && recoverTo && recoverTo !== 'about:blank') ||
+          (cur === 'about:blank' && recoverTo && recoverTo !== 'about:blank')
+        );
+        if (needRecover && recoverTo && recoverTo !== 'about:blank') {
+          debugLog.log(`[WF] showView KEEPALIVE recover daping from="${String(cur).slice(0, 100)}" to="${String(recoverTo).slice(0, 100)}"`);
+          target.webContents.loadURL(recoverTo);
+        }
+      } catch (e) {}
     } else {
       branch = 'NEW';
       // V1.10 全页常驻：旧视图不销毁，移入 keepAlive 持久化
       if (currentView && currentMeta) {
         const oldKey = `${currentMeta.roomId}_${currentMeta.subPage}`;
-        if (!keptAliveViews.has(oldKey)) {
-          hideView(currentView);
-          keptAliveViews.set(oldKey, { view: currentView, meta: { ...currentMeta } });
-        } else {
-          hideView(currentView);
+        const existing = keptAliveViews.get(oldKey);
+        // 若槽位已有别的实例（例如旧 scrape/preload 误入），以当前用户视图为准替换
+        if (existing && existing.view !== currentView) {
+          try { hideView(existing.view); } catch (e) {}
+          // 不销毁：可能仍被 scrape 引用；仅让 UI 槽位指向用户视图
         }
+        hideView(currentView);
+        keptAliveViews.set(oldKey, { view: currentView, meta: { ...currentMeta } });
       }
       target = createView(roomId, subPage, { lastUrl });
       // 新视图立刻加入保活
@@ -305,14 +329,55 @@ function createWebViewFactory({ authManager, onViewEvent } = {}) {
       view = createView(roomId, subPage);
       keptAliveViews.set(key, { view, meta: { roomId, subPage } });
     }
+    // 若正是用户当前视图，切勿藏到屏外
+    if (!(currentView && view === currentView)) {
+      hideView(view);
+    }
+    return view;
+  }
+
+  /**
+   * 后台抓取专用视图：与 UI 保活隔离，同分区共享登录 cookie，但绝不替换用户大屏实例。
+   */
+  function getOrCreateScrapeView(roomId, subPage) {
+    const key = `${roomId}_${subPage}`;
+    let view = scrapeViews.get(key);
+    if (view && !view.webContents.isDestroyed()) {
+      hideView(view);
+      return view;
+    }
+    const partition = partitionName(roomId, subPage);
+    ensurePartitionGuarded(partition);
+    view = new BrowserView({
+      webPreferences: {
+        partition,
+        preload: WEBVIEW_PRELOAD,
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: false
+      }
+    });
+    // 不 register 到 UI meta / 不 bind 完整 UI 事件，避免 lastUrl 被后台加载污染
+    ourWebContentsIds.add(view.webContents.id);
+    view.webContents.setWindowOpenHandler(({ url }) => {
+      if (isBlockedUrl(url) || isExternalProtocol(url)) return { action: 'deny' };
+      return { action: 'deny' };
+    });
+    scrapeViews.set(key, view);
     hideView(view);
+    const url = getDefaultUrl(roomId, subPage);
+    if (url && url !== 'about:blank') {
+      view.webContents.loadURL(url).catch(() => {});
+    }
+    debugLog.log(`[WF] create scrapeView roomId=${roomId} subPage=${subPage} url="${url}"`);
     return view;
   }
 
   return {
     createView, showView, setKeepAlive, setBounds,
     getCurrentView, getKeepAliveCount, destroyView, hideView,
-    registerViewMeta, preloadView, getRoomMeta, getOrCreateHiddenView
+    registerViewMeta, preloadView, getRoomMeta, getOrCreateHiddenView,
+    getOrCreateScrapeView
   };
 }
 

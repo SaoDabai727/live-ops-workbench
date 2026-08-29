@@ -2,6 +2,8 @@
 // 每小时自动拉取每房间 KPI 数据，含失败重试 + 数据缓存
 
 const { generateReport } = require('./reportManager');
+const { getDefaultUrl } = require('./config');
+const { shouldNavigateDaping, parseLiveRoomId, isPlaceholderRoomId } = require('./compassUrl');
 const debugLog = require('./debugLog');
 
 const INTERVAL_MS = 60 * 60 * 1000;      // 每小时
@@ -11,27 +13,31 @@ const MAX_RETRIES = 3;
 function createReportScheduler({ factory, config, saveReport, mainWindow }) {
   let timer = null;
   let paused = false;
-  let lastRunTime = null;    // 上次运行时间
-  let nextRunTime = null;    // 下次运行时间
+  let lastRunTime = null;
+  let nextRunTime = null;
   const retryState = new Map();
-  let onTick = null;         // 回调：每次运行时通知外部
+  let onTick = null;
 
   async function runForRoom(roomId) {
     const roomCfg = config.liveRooms.find(r => r.id === roomId);
     if (!roomCfg) return;
 
-    // V1.38：后台抓取专用——不改 currentView，不动用户当前视图
+    // 后台抓取：专用 scrape 视图，绝不碰用户正在看的大屏保活实例
     let dapingView;
     try {
-      dapingView = factory.getOrCreateHiddenView(roomId, 'daping');
-      // 确保视图加载正确的 URL
-      const { getDefaultUrl } = require('./config');
+      dapingView = factory.getOrCreateScrapeView
+        ? factory.getOrCreateScrapeView(roomId, 'daping')
+        : factory.getOrCreateHiddenView(roomId, 'daping');
       const expectedUrl = getDefaultUrl(roomId, 'daping');
       const currentUrl = dapingView.webContents.getURL();
-      if (currentUrl !== expectedUrl) {
+      const expectedId = parseLiveRoomId(expectedUrl);
+
+      if (!expectedUrl || expectedUrl === 'about:blank' || isPlaceholderRoomId(expectedId)) {
+        debugLog.log('[Scheduler] 跳过导航：房间缺少有效 live_room_id roomId=' + roomId);
+      } else if (shouldNavigateDaping(currentUrl, expectedUrl)) {
+        debugLog.log('[Scheduler] scrape 导航 roomId=' + roomId + ' -> ' + expectedUrl.slice(0, 120));
         try {
           dapingView.webContents.loadURL(expectedUrl);
-          // 等待加载完成（最多 25 秒）
           await new Promise((resolve) => {
             const settle = () => { clearTimeout(t); resolve(); };
             const t = setTimeout(settle, 25000);
@@ -39,6 +45,8 @@ function createReportScheduler({ factory, config, saveReport, mainWindow }) {
             dapingView.webContents.once('did-fail-load', settle);
           });
         } catch (e) {}
+      } else {
+        debugLog.log('[Scheduler] 复用已有大屏 URL roomId=' + roomId + ' live_room_id=' + parseLiveRoomId(currentUrl));
       }
     } catch (e) {
       debugLog.log('[Scheduler] 创建 daping 视图失败 roomId=' + roomId + ': ' + e.message);
@@ -57,7 +65,6 @@ function createReportScheduler({ factory, config, saveReport, mainWindow }) {
       saveReport(roomId, result.report);
       retryState.delete(roomId);
       debugLog.log('[Scheduler] 自动日报成功 roomId=' + roomId + ' matched=' + Object.keys(result.kpi).filter(k => result.kpi[k]).length);
-      // 通知渲染进程
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('auto-report-done', {
           roomId,
@@ -96,7 +103,7 @@ function createReportScheduler({ factory, config, saveReport, mainWindow }) {
     nextRunTime = lastRunTime + INTERVAL_MS;
     if (onTick) onTick(nextRunTime);
     for (const room of config.liveRooms) {
-      if (room.autoReport === false) continue; // V1.24: 跳过关闭自动抓取的房间
+      if (room.autoReport === false) continue;
       await runForRoom(room.id);
     }
     debugLog.log('[Scheduler] 定时抓取完成');
@@ -105,7 +112,7 @@ function createReportScheduler({ factory, config, saveReport, mainWindow }) {
   function start() {
     stop();
     debugLog.log('[Scheduler] 启动，间隔=' + (INTERVAL_MS / 60000) + '分钟');
-    nextRunTime = Date.now() + 30000; // 30秒后首次
+    nextRunTime = Date.now() + 30000;
     if (onTick) onTick(nextRunTime);
     setTimeout(() => runAll(), 30000);
     timer = setInterval(runAll, INTERVAL_MS);

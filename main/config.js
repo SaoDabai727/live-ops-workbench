@@ -4,6 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
+const { isPlaceholderRoomId, isCompassLiveScreenUrl, parseLiveRoomId } = require('./compassUrl');
 
 // ====== 路径 ======
 const IS_PACKAGED = app && app.isPackaged;
@@ -76,6 +77,11 @@ function syncSubPagesFromBundle(srcDir, userDir) {
         }
         if (cfg.kind && user.subPages[key].kind !== cfg.kind) {
           user.subPages[key].kind = cfg.kind;
+          changed = true;
+        }
+        // 同步刷新策略（大屏禁止硬刷新等关键行为）
+        if (typeof cfg.refreshInterval === 'number' && user.subPages[key].refreshInterval !== cfg.refreshInterval) {
+          user.subPages[key].refreshInterval = cfg.refreshInterval;
           changed = true;
         }
       }
@@ -212,9 +218,22 @@ function getDefaultUrl(roomId, subPage) {
   // report 子页不加载 URL
   const sp = config.subPages[subPage];
   if (!sp || sp.kind === 'report') return 'about:blank';
+
+  const room = config.liveRooms.find(r => r.id === roomId);
+
+  // 直播大屏：dailyUrl 优先（配置里 roomId 常为占位 123456/789012，不能用来拼 compass）
+  if (subPage === 'daping' && room && room.dailyUrl && isCompassLiveScreenUrl(room.dailyUrl)
+      && !isPlaceholderRoomId(parseLiveRoomId(room.dailyUrl))) {
+    return room.dailyUrl;
+  }
+
   if (sp.defaultUrlTemplate) {
-    const room = config.liveRooms.find(r => r.id === roomId);
-    return sp.defaultUrlTemplate.replace('{roomId}', room ? room.roomId : roomId);
+    const rid = room ? room.roomId : roomId;
+    // 占位 roomId 不要拼出错误大屏地址（否则调度器/复位会把已登录页冲掉）
+    if (subPage === 'daping' && isPlaceholderRoomId(rid)) {
+      return 'about:blank';
+    }
+    return sp.defaultUrlTemplate.replace('{roomId}', rid);
   }
   return sp.defaultUrl || 'about:blank';
 }

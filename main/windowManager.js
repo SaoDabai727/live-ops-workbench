@@ -12,6 +12,7 @@ const { saveRooms, loadRooms, loadNavState, saveNavState, saveReport, loadLastRe
 const { generateReport, scrapeProfile } = require('./reportManager');
 const { createReportScheduler } = require('./reportScheduler');
 const { forceExplainPanel } = require('./explainManager');
+const { looksLikeCompassAccessDeniedPage, isPlaceholderRoomId, parseLiveRoomId } = require('./compassUrl');
 const { clipboard } = require('electron');
 const debugLog = require('./debugLog');
 const { cssRectToViewBounds } = require('./layoutBounds');
@@ -91,6 +92,14 @@ function createWindowManager({ mainWindow }) {
           debugLog.log(`[WM] onPageLoaded IGNORED (summon.bytedance): roomId=${roomId} subPage=${subPage}`);
           pushState();
           return;
+        }
+        // 大屏掉到无权/首页或占位 roomId 时，不覆盖已有的有效 lastUrl
+        if (subPage === 'daping') {
+          if (looksLikeCompassAccessDeniedPage(url) || isPlaceholderRoomId(parseLiveRoomId(url))) {
+            debugLog.log(`[WM] onPageLoaded IGNORED (bad daping url): roomId=${roomId} url="${String(url).slice(0, 120)}"`);
+            pushState();
+            return;
+          }
         }
         debugLog.log(`[WM] onPageLoaded: roomId=${roomId} subPage=${subPage} -> lastUrl="${url}"`);
         appState.pages[roomId][subPage].lastUrl = url;

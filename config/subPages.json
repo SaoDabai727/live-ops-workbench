@@ -8,7 +8,7 @@
     "daping": {
       "label": "直播大屏",
       "defaultUrlTemplate": "https://compass.jinritemai.com/screen/live/talent?live_room_id={roomId}",
-      "refreshInterval": 60
+      "refreshInterval": 0
     },
     "report": {
       "label": "直播日报",

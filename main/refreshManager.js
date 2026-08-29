@@ -1,6 +1,7 @@
 // refreshManager.js — 智能自动刷新（空闲检测 + 全局暂停）
 // 对应设计文档第 7 节
 const { getSubPageConfig } = require('./config');
+const { isCompassLiveScreenUrl } = require('./compassUrl');
 
 function createRefreshManager() {
   let timer = null;
@@ -23,6 +24,11 @@ function createRefreshManager() {
       if (paused) return;
       if (!currentView || currentView.webContents.isLoading()) return;
       try {
+        const url = currentView.webContents.getURL();
+        // 罗盘直播大屏硬刷新会丢掉场次关联，弹出「账号无权访问」
+        if (isCompassLiveScreenUrl(url) || currentSubPage === 'daping') {
+          return;
+        }
         const isIdle = await currentView.webContents.executeJavaScript(
           'document.activeElement.tagName !== "INPUT" && document.activeElement.tagName !== "TEXTAREA"'
         );
@@ -35,7 +41,6 @@ function createRefreshManager() {
     }, interval);
   }
 
-  // 全局暂停标志，所有定时器分支必查（第 14 节注意点）
   function setPaused(p) { paused = !!p; }
   function isPaused() { return paused; }
 
