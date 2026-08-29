@@ -529,6 +529,33 @@ body {
 }
 
 /* 侧栏底部更新面板（勿 fixed：BrowserView 会盖住 HTML 浮层） */
+.login-health-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 8px 12px;
+  background: rgba(180, 72, 48, 0.18);
+  border-bottom: 1px solid rgba(220, 100, 70, 0.45);
+  color: #F3D2C4;
+  font-size: 12.5px;
+  line-height: 1.4;
+  flex-shrink: 0;
+}
+.login-health-banner[hidden] { display: none !important; }
+.login-health-banner span { flex: 1; min-width: 0; }
+.login-health-dismiss {
+  border: none;
+  background: transparent;
+  color: #F3D2C4;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+  opacity: 0.75;
+}
+.login-health-dismiss:hover { opacity: 1; }
+
 .update-banner {
   position: relative;
   display: flex;

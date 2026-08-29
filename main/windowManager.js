@@ -8,13 +8,21 @@ const { createRefreshManager } = require('./refreshManager');
 const { createBackgroundServices } = require('./backgroundServices');
 const { createPromptWindow } = require('./promptWindow');
 const { createRoomManagerWindow } = require('./roomManager');
-const { saveRooms, loadRooms, loadNavState, saveNavState, saveReport, loadLastReport } = require('./config');
+const { saveRooms, loadRooms, loadNavState, saveNavState, saveReport, loadLastReport, syncRoomIdFromDailyUrl } = require('./config');
 const { generateReport, scrapeProfile } = require('./reportManager');
 const { forceExplainPanel } = require('./explainManager');
-const { looksLikeCompassAccessDeniedPage, isPlaceholderRoomId, parseLiveRoomId } = require('./compassUrl');
+const { looksLikeCompassAccessDeniedPage, isPlaceholderRoomId, parseLiveRoomId, looksLikeLoginUrl, isCompassLiveScreenUrl } = require('./compassUrl');
+const { isLoginPageText } = require('./reportGenerator');
 const { clipboard } = require('electron');
 const debugLog = require('./debugLog');
 const { cssRectToViewBounds } = require('./layoutBounds');
+
+const LOGIN_CHECK_JS = `(() => {
+  try {
+    const t = (document.body && document.body.innerText) ? document.body.innerText.slice(0, 4000) : '';
+    return t;
+  } catch (e) { return ''; }
+})()`;
 
 function createWindowManager({ mainWindow }) {
   // 运行时状态（设计文档 3.3）
@@ -98,6 +106,23 @@ function createWindowManager({ mainWindow }) {
             pushState();
             return;
           }
+          // 有效大屏 URL → 写回房间 roomId / dailyUrl
+          const room = config.liveRooms.find(r => r.id === roomId);
+          if (room && isCompassLiveScreenUrl(url)) {
+            const { changed } = syncRoomIdFromDailyUrl(room, url);
+            if (changed) {
+              saveRooms(config.liveRooms);
+              debugLog.log(`[WM] synced roomId from daping url roomId=${roomId} live_room_id=${room.roomId}`);
+            }
+          }
+        }
+        // 登录态健康：URL 层判断
+        if (appState.pages[roomId] && appState.pages[roomId][subPage]) {
+          const loginByUrl = looksLikeLoginUrl(url);
+          appState.pages[roomId][subPage].loginRequired = loginByUrl;
+          if (!loginByUrl && (subPage === 'daping' || subPage === 'juliang')) {
+            scheduleLoginTextCheck(roomId, subPage);
+          }
         }
         debugLog.log(`[WM] onPageLoaded: roomId=${roomId} subPage=${subPage} -> lastUrl="${url}"`);
         appState.pages[roomId][subPage].lastUrl = url;
@@ -115,6 +140,51 @@ function createWindowManager({ mainWindow }) {
   const keepAliveSet = new Set();
   const isKeepAlive = (roomId, subPage) => keepAliveSet.has(`${roomId}_${subPage}`);
 
+  const loginCheckTimers = new Map();
+
+  function scheduleLoginTextCheck(roomId, subPage) {
+    const key = `${roomId}_${subPage}`;
+    if (loginCheckTimers.has(key)) {
+      clearTimeout(loginCheckTimers.get(key));
+    }
+    const timer = setTimeout(async () => {
+      loginCheckTimers.delete(key);
+      try {
+        if (appState.currentRoomId !== roomId || appState.currentSubPage !== subPage) return;
+        const view = factory.getCurrentView && factory.getCurrentView();
+        if (!view || view.webContents.isDestroyed()) return;
+        const text = await view.webContents.executeJavaScript(LOGIN_CHECK_JS, true);
+        const needLogin = isLoginPageText(text || '');
+        if (appState.pages[roomId] && appState.pages[roomId][subPage]) {
+          const prev = !!appState.pages[roomId][subPage].loginRequired;
+          appState.pages[roomId][subPage].loginRequired = needLogin;
+          if (prev !== needLogin) pushState();
+        }
+      } catch (e) {
+        debugLog.log(`[WM] login text check failed: ${e.message}`);
+      }
+    }, 1200);
+    loginCheckTimers.set(key, timer);
+  }
+
+  function getLoginHealth() {
+    const warnings = [];
+    config.liveRooms.forEach((room) => {
+      const pages = appState.pages[room.id] || {};
+      ['daping', 'juliang'].forEach((sp) => {
+        if (pages[sp] && pages[sp].loginRequired) {
+          warnings.push({
+            roomId: room.id,
+            label: room.label || room.id,
+            subPage: sp,
+            subLabel: (config.subPages[sp] && config.subPages[sp].label) || sp
+          });
+        }
+      });
+    });
+    return { warnings, currentNeedsLogin: warnings.some(w => w.roomId === appState.currentRoomId) };
+  }
+
   function pushState() {
     if (mainWindow) {
       // 向渲染进程下发运行时状态 + 配置 + 自定义 URL
@@ -124,7 +194,8 @@ function createWindowManager({ mainWindow }) {
         liveRooms: config.liveRooms,
         subPages: config.subPages,
         layout: config.layout,
-        customUrls: freshCustom
+        customUrls: freshCustom,
+        loginHealth: getLoginHealth()
       });
     }
   }

@@ -41,7 +41,8 @@ function createMainWindow() {
       preload: path.join(__dirname, '..', 'renderer', 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
+      // 壳窗口启用 sandbox；BrowserView 因分区会话/注入脚本仍保持 sandbox:false（见 docs/adr）
+      sandbox: true
     }
   });
   mainWindow.once('ready-to-show', () => {

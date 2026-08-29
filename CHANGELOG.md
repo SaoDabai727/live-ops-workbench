@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## V1.5.14 (2026-08-29)
+
+### 新增
+- `dailyUrl` → `roomId` 自动同步（启动 / 保存房间 / 大屏加载时）
+- 登录态健康横幅（大屏 / 百应疑似未登录时提示）
+- `npm test` 纯 Node 单测（compassUrl / 日报 / 登录检测 / 画像 / kpiPatterns）
+- README、Electron 安全基线 ADR
+
+### 优化
+- `kpiPatterns.json` 真正注入 `reportGenerator`（支持多备选正则）
+- 主壳 / 直播间管理 / 飞书提示窗启用 `sandbox: true`；BrowserView 分区页保持 `sandbox: false`（见 ADR）
+
+### 变更
+- 移除已停用的定时自动日报调度器死代码
+- 合并计划 / 审查报告归档至 `docs/archive/`
+
 ## V1.5.13 (2026-08-29)
 
 ### 优化

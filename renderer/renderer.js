@@ -43,11 +43,49 @@
     }, 4000);
   }
 
+  const loginHealthBanner = document.getElementById('login-health-banner');
+  const loginHealthText = document.getElementById('login-health-text');
+  const btnLoginHealthDismiss = document.getElementById('btn-login-health-dismiss');
+  let loginHealthDismissedKey = '';
+
+  function renderLoginHealth() {
+    if (!loginHealthBanner) return;
+    const health = state && state.loginHealth;
+    const warnings = (health && health.warnings) || [];
+    const currentRoomId = state && state.currentRoomId;
+    const relevant = warnings.filter(w => w.roomId === currentRoomId);
+    if (!relevant.length) {
+      loginHealthBanner.hidden = true;
+      return;
+    }
+    const key = relevant.map(w => w.roomId + ':' + w.subPage).join('|');
+    if (key === loginHealthDismissedKey) {
+      loginHealthBanner.hidden = true;
+      return;
+    }
+    const names = relevant.map(w => w.subLabel || w.subPage).join('、');
+    const roomLabel = relevant[0].label || currentRoomId;
+    loginHealthText.textContent = '「' + roomLabel + '」的 ' + names + ' 疑似未登录或登录失效，请先扫码登录后再抓取日报。';
+    loginHealthBanner.hidden = false;
+  }
+
+  if (btnLoginHealthDismiss) {
+    btnLoginHealthDismiss.addEventListener('click', () => {
+      const health = state && state.loginHealth;
+      const warnings = (health && health.warnings) || [];
+      const relevant = warnings.filter(w => w.roomId === (state && state.currentRoomId));
+      loginHealthDismissedKey = relevant.map(w => w.roomId + ':' + w.subPage).join('|');
+      loginHealthBanner.hidden = true;
+      if (typeof scheduleLayoutReport === 'function') scheduleLayoutReport();
+    });
+  }
+
   function render() {
     if (!state) return;
     renderSidebar();
     renderTabbar();
     renderReportPanel();
+    renderLoginHealth();
   }
 
   function renderReportPanel() {
@@ -257,10 +295,11 @@
   api.onStateUpdate(s => {
     const prevRoom = state ? state.currentRoomId : null;
     state = s;
-    // 切换房间时清空日报编辑器
+    // 切换房间时清空日报编辑器，并重置登录提示关闭状态
     if (prevRoom && prevRoom !== s.currentRoomId) {
       reportEditor.value = '';
       reportStatus.textContent = '';
+      loginHealthDismissedKey = '';
     }
     render();
     // 加载进度条

@@ -194,6 +194,7 @@ function createWebViewFactory({ authManager, onViewEvent } = {}) {
           preload: WEBVIEW_PRELOAD,
           contextIsolation: true,
           nodeIntegration: false,
+          // 分区会话 + 页内注入需要；壳窗口已 sandbox:true，见 docs/adr/0001
           sandbox: false
         }
       });
@@ -354,6 +355,7 @@ function createWebViewFactory({ authManager, onViewEvent } = {}) {
         preload: WEBVIEW_PRELOAD,
         contextIsolation: true,
         nodeIntegration: false,
+        // 后台抓取视图同样需要分区会话；见 docs/adr/0001
         sandbox: false
       }
     });

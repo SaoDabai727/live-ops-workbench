@@ -1,6 +1,6 @@
 {
   "name": "live-ops-workbench",
-  "version": "1.5.13",
+  "version": "1.5.14",
   "description": "直播运营助手 - 多直播间监控与日报生成一体工作台",
   "main": "main/index.js",
   "author": "",
@@ -10,6 +10,7 @@
     "build": "electron-builder --win --x64 --publish never",
     "build:portable": "electron-builder --win portable --publish never",
     "build:dir": "electron-builder --win --dir --publish never",
+    "test": "node test/unit-test.js",
     "test-regex": "node test/regex-test.js test/sample-compass.txt",
     "test-regex:douyin": "node test/regex-test.js test/sample-douyin.txt"
   },

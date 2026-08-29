@@ -26,7 +26,7 @@ function createPromptWindow({
       preload: path.join(__dirname, '..', 'renderer', 'prompt.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
+      sandbox: true
     }
   });
 

@@ -21,7 +21,7 @@ function createRoomManagerWindow({ mainWindow, rooms, onSave }) {
       preload: path.join(__dirname, '..', 'renderer', 'room-mgr.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
+      sandbox: true
     }
   });
 

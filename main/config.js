@@ -4,7 +4,8 @@
 const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
-const { isPlaceholderRoomId, isCompassLiveScreenUrl, parseLiveRoomId } = require('./compassUrl');
+const { isPlaceholderRoomId, isCompassLiveScreenUrl, parseLiveRoomId, syncRoomIdFromDailyUrl } = require('./compassUrl');
+const { setKpiPatterns } = require('./reportGenerator');
 
 // ====== 路径 ======
 const IS_PACKAGED = app && app.isPackaged;
@@ -52,8 +53,34 @@ function initConfig() {
       if (fs.existsSync(src)) fs.copyFileSync(src, dest);
     }
   });
-  // 打包升级后：把内置 subPages 的新增页/改名合并进用户配置
+  // 打包升级后：把内置 subPages / kpiPatterns 的新增项合并进用户配置
   syncSubPagesFromBundle(srcDir, userDir);
+  syncKpiPatternsFromBundle(srcDir, userDir);
+}
+
+function syncKpiPatternsFromBundle(srcDir, userDir) {
+  const srcPath = path.join(srcDir, 'kpiPatterns.json');
+  const destPath = path.join(userDir, 'kpiPatterns.json');
+  if (!fs.existsSync(srcPath)) return;
+  try {
+    const bundled = loadJson(srcPath);
+    if (!bundled) return;
+    if (!fs.existsSync(destPath)) {
+      saveJson(destPath, bundled);
+      return;
+    }
+    const user = loadJson(destPath);
+    if (!user) {
+      saveJson(destPath, bundled);
+      return;
+    }
+    // 用户未改或仍是旧单字符串结构时，用内置完整备选表覆盖
+    const userGmv = user.scrape_regex && user.scrape_regex.gmv;
+    const needsUpgrade = !user.version || typeof userGmv === 'string' || !Array.isArray(userGmv);
+    if (needsUpgrade) {
+      saveJson(destPath, bundled);
+    }
+  } catch (e) {}
 }
 
 function syncSubPagesFromBundle(srcDir, userDir) {
@@ -182,6 +209,7 @@ migrateOldConfigs();
 const roomsCfg = loadJson(path.join(configDir(), 'rooms.json')) || { liveRooms: [] };
 const subCfg = loadJson(path.join(configDir(), 'subPages.json')) || {};
 const kpiCfg = loadJson(path.join(configDir(), 'kpiPatterns.json')) || {};
+setKpiPatterns(kpiCfg);
 
 const config = {
   liveRooms: roomsCfg.liveRooms || [],
@@ -195,6 +223,17 @@ const config = {
   tokenExchangeEndpoint: subCfg.tokenExchangeEndpoint || '',
   kpiPatterns: kpiCfg || {}
 };
+
+// 启动时：从已有 dailyUrl 写回真实 roomId（去掉占位 123456 等）
+(function syncRoomIdsAtBoot() {
+  let changed = false;
+  (config.liveRooms || []).forEach((room) => {
+    if (syncRoomIdFromDailyUrl(room).changed) changed = true;
+  });
+  if (changed) {
+    saveJson(path.join(configDir(), 'rooms.json'), { version: '2.0', liveRooms: config.liveRooms });
+  }
+})();
 
 // ====== 辅助函数（保留 B 原有接口） ======
 const CUSTOM_URLS_PATH = path.join(configDir(), 'customUrls.json');
@@ -257,6 +296,7 @@ function loadRooms() {
 function saveRooms(liveRooms) {
   const cleaned = (liveRooms || []).map((r) => {
     const { autoReport, ...rest } = r || {};
+    syncRoomIdFromDailyUrl(rest);
     return rest;
   });
   saveJson(ROOMS_PATH, { version: '2.0', liveRooms: cleaned });
@@ -305,5 +345,6 @@ module.exports = {
   loadCustomUrls, saveCustomUrls,
   loadRooms, saveRooms,
   loadNavState, saveNavState,
-  saveReport, loadLastReport, reportDir
+  saveReport, loadLastReport, reportDir,
+  syncRoomIdFromDailyUrl
 };

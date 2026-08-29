@@ -14,6 +14,38 @@ function parseLiveRoomId(url) {
   }
 }
 
+/** URL 是否像登录 / 鉴权页（用于登录态健康检查） */
+function looksLikeLoginUrl(url) {
+  if (!url || typeof url !== 'string') return false;
+  const s = url.toLowerCase();
+  if (s === 'about:blank' || s.startsWith('data:')) return false;
+  return /passport|\/login|\/signin|sso\.|auth\.|accounts\.|oauth\/authorize/i.test(s);
+}
+
+/**
+ * 从 dailyUrl / 当前大屏 URL 写回房间 roomId（占位或不同场次时更新）。
+ * @returns {{ changed: boolean, roomId?: string }}
+ */
+function syncRoomIdFromDailyUrl(room, url) {
+  if (!room || typeof room !== 'object') return { changed: false };
+  const source = url || room.dailyUrl || '';
+  const liveId = parseLiveRoomId(source);
+  if (!liveId || isPlaceholderRoomId(liveId)) return { changed: false };
+  let changed = false;
+  if (String(room.roomId || '') !== liveId) {
+    room.roomId = liveId;
+    changed = true;
+  }
+  if (source && isCompassLiveScreenUrl(source)) {
+    const prevId = parseLiveRoomId(room.dailyUrl || '');
+    if (!room.dailyUrl || prevId !== liveId) {
+      room.dailyUrl = source;
+      changed = true;
+    }
+  }
+  return { changed, roomId: liveId };
+}
+
 /** 配置里常见的占位 / 无效 roomId，不可用来导航真实大屏 */
 function isPlaceholderRoomId(roomId) {
   if (roomId == null) return true;
@@ -71,5 +103,7 @@ module.exports = {
   isPlaceholderRoomId,
   isCompassLiveScreenUrl,
   looksLikeCompassAccessDeniedPage,
+  looksLikeLoginUrl,
+  syncRoomIdFromDailyUrl,
   shouldNavigateDaping
 };

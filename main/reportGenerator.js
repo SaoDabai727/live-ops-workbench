@@ -1,8 +1,8 @@
 // reportGenerator.js — 移植自 A 的 scraper/translator.py
 // 功能：整页文本 → KPI 正则提取 → 日报组装 → 画像标签解析
+// KPI 正则优先读 config/kpiPatterns.json（经 setKpiPatterns），否则用内置默认。
 
 // ---------- 文本预处理 ----------
-// 合并数字间的空白（抖音逐位渲染导致 "3 1 , 4 9 0 万" → "31,490万"）
 const MERGE_SPACE_RE = /([¥￥\d,.分秒])\s+([¥￥\d,.万亿%分秒])/g;
 
 function flattenPageText(text) {
@@ -25,84 +25,124 @@ function cleanCurrency(text) {
   return cleaned || null;
 }
 
-function cleanText(text) {
-  if (text == null) return null;
-  const s = String(text).trim();
-  return s || null;
+// ---------- 默认 KPI 正则（与 kpiPatterns.json 同步；配置缺失时兜底） ----------
+const DEFAULT_SCRAPE_REGEX = {
+  gmv: [
+    '直播间成交金额\\s*[¥￥]?\\s*([\\d,]+\\.?\\d*\\s*[万亿]?)',
+    '成交金额\\s*[¥￥]?\\s*([\\d,]+\\.?\\d*\\s*[万亿]?)',
+    '支付\\s*GMV\\s*[¥￥]?\\s*([\\d,]+\\.?\\d*\\s*[万亿]?)',
+    '结算金额\\s*[¥￥]?\\s*([\\d,]+\\.?\\d*\\s*[万亿]?)'
+  ],
+  refund: ['退款金额\\s*[¥￥]?\\s*([\\d,]+\\.?\\d*\\s*[万亿]?)'],
+  gsv: ['(?:实际成交|销售总额)\\s*[¥￥]?\\s*([\\d,]+\\.?\\d*\\s*[万亿]?)'],
+  exposure_total: [
+    '曝光次数\\s*([\\d,]+\\.?\\d*\\s*[万亿]?)',
+    '曝光量\\s*([\\d,]+\\.?\\d*\\s*[万亿]?)'
+  ],
+  cumulative_viewers: [
+    '累计观看人数\\s*([\\d,]+\\.?\\d*\\s*[万亿]?)',
+    '累计观看\\s*([\\d,]+\\.?\\d*\\s*[万亿]?)',
+    '观看人数\\s*([\\d,]+\\.?\\d*\\s*[万亿]?)',
+    '观看量\\s*([\\d,]+\\.?\\d*\\s*[万亿]?)'
+  ],
+  avg_watch_duration: ['人均观看时长\\s*(\\d+分(?:钟)?\\d+秒|\\d+秒|\\d+分(?:钟)?)'],
+  exposure_view_rate: [
+    '曝光[—\\-]观看率[^\\d%]*([\\d.]+%)',
+    '曝光观看率[^\\d%]*([\\d.]+%)'
+  ],
+  interaction_rate: [
+    '观看[—\\-]互动率[^\\d%]*([\\d.]+%)',
+    '观看互动率[^\\d%]*([\\d.]+%)'
+  ],
+  product_click_rate: [
+    '商品点击[—\\-]成交率[^\\d%]*([\\d.]+%)',
+    '商品点击成交率[^\\d%]*([\\d.]+%)'
+  ],
+  follow_rate: [
+    '观看[—\\-]关注率[^\\d%]*([\\d.]+%)',
+    '观看关注率[^\\d%]*([\\d.]+%)'
+  ],
+  room_name: ['([\\u4e00-\\u9fa5]{2,30}(?:官方|旗舰)?直播间)']
+};
+
+const DEFAULT_PROFILE_TAG = '([\\d\\u4e00-\\u9fa5a-zA-Z][\\u4e00-\\u9fa5a-zA-Z0-9:\\-]*?)\\s*(\\d+(?:\\.\\d+)?%)';
+
+let scrapeRegex = { ...DEFAULT_SCRAPE_REGEX };
+let profileTagSource = DEFAULT_PROFILE_TAG;
+
+function asPatternList(value) {
+  if (value == null) return [];
+  if (Array.isArray(value)) return value.filter((s) => typeof s === 'string' && s);
+  if (typeof value === 'string' && value) return [value];
+  return [];
 }
 
-// ---------- KPI 正则提取（移植 A 的 _extract_kpis） ----------
+/** 注入 kpiPatterns.json（或测试用覆盖）；缺项回退内置默认 */
+function setKpiPatterns(cfg) {
+  const src = (cfg && cfg.scrape_regex) || {};
+  const next = {};
+  Object.keys(DEFAULT_SCRAPE_REGEX).forEach((key) => {
+    const list = asPatternList(src[key]);
+    next[key] = list.length ? list : DEFAULT_SCRAPE_REGEX[key];
+  });
+  scrapeRegex = next;
+  const tag = cfg && cfg.profile_regex && cfg.profile_regex.tag_format;
+  profileTagSource = (typeof tag === 'string' && tag) ? tag : DEFAULT_PROFILE_TAG;
+}
+
+function matchFirst(flatText, key, flags) {
+  const list = scrapeRegex[key] || [];
+  for (let i = 0; i < list.length; i++) {
+    try {
+      const m = flatText.match(new RegExp(list[i], flags || ''));
+      if (m && m[1] != null) return m[1].trim();
+    } catch (e) {
+      // 忽略非法正则，继续下一条备选
+    }
+  }
+  return null;
+}
+
+// ---------- KPI 正则提取 ----------
 function extractKpis(flatText) {
   const results = {};
-
-  // GMV — 兼容巨量百应 compass 大屏（标签可能为"成交金额"/"支付GMV"/"直播间成交金额"）
-  let m = flatText.match(/直播间成交金额\s*[¥￥]?\s*([\d,]+\.?\d*\s*[万亿]?)/);
-  if (!m) m = flatText.match(/成交金额\s*[¥￥]?\s*([\d,]+\.?\d*\s*[万亿]?)/);
-  if (!m) m = flatText.match(/支付\s*GMV\s*[¥￥]?\s*([\d,]+\.?\d*\s*[万亿]?)/i);
-  if (!m) m = flatText.match(/结算金额\s*[¥￥]?\s*([\d,]+\.?\d*\s*[万亿]?)/);
-  if (m) results.gmv = m[1].trim();
-
-  // 退款金额
-  m = flatText.match(/退款金额\s*[¥￥]?\s*([\d,]+\.?\d*\s*[万亿]?)/);
-  if (m) results.refund = m[1].trim();
-
-  // GSV / 实际成交
-  m = flatText.match(/(?:实际成交|销售总额)\s*[¥￥]?\s*([\d,]+\.?\d*\s*[万亿]?)/);
-  if (m) results.gsv = m[1].trim();
-
-  // 曝光次数
-  m = flatText.match(/曝光次数\s*([\d,]+\.?\d*\s*[万亿]?)/);
-  if (!m) m = flatText.match(/曝光量\s*([\d,]+\.?\d*\s*[万亿]?)/);
-  if (m) results.exposureTotal = m[1].trim();
-
-  // 累计观看人数 — 兼容 compass 大屏（标签可能为"累计观看"/"观看人数"/"观看量"）
-  m = flatText.match(/累计观看人数\s*([\d,]+\.?\d*\s*[万亿]?)/);
-  if (!m) m = flatText.match(/累计观看\s*([\d,]+\.?\d*\s*[万亿]?)/);
-  if (!m) m = flatText.match(/观看人数\s*([\d,]+\.?\d*\s*[万亿]?)/);
-  if (!m) m = flatText.match(/观看量\s*([\d,]+\.?\d*\s*[万亿]?)/);
-  if (m) results.cumulativeViewers = m[1].trim();
-
-  // 人均观看时长
-  m = flatText.match(/人均观看时长\s*(\d+分(?:钟)?\d+秒|\d+秒|\d+分(?:钟)?)/);
-  if (m) results.avgWatchDuration = m[1].trim();
-
-  // 曝光-观看率
-  m = flatText.match(/曝光[—\-]观看率[^\d%]*([\d.]+%)/);
-  if (!m) m = flatText.match(/曝光观看率[^\d%]*([\d.]+%)/);
-  if (m) results.exposureViewRate = m[1].trim();
-
-  // 观看-互动率
-  m = flatText.match(/观看[—\-]互动率[^\d%]*([\d.]+%)/);
-  if (!m) m = flatText.match(/观看互动率[^\d%]*([\d.]+%)/);
-  if (m) results.interactionRate = m[1].trim();
-
-  // 商品点击率
-  m = flatText.match(/商品点击[—\-]成交率[^\d%]*([\d.]+%)/);
-  if (!m) m = flatText.match(/商品点击成交率[^\d%]*([\d.]+%)/);
-  if (m) results.productClickRate = m[1].trim();
-
-  // 观看-关注率
-  m = flatText.match(/观看[—\-]关注率[^\d%]*([\d.]+%)/);
-  if (!m) m = flatText.match(/观看关注率[^\d%]*([\d.]+%)/);
-  if (m) results.followRate = m[1].trim();
-
-  // 直播间名称
-  m = flatText.match(/([\u4e00-\u9fa5]{2,30}(?:官方|旗舰)?直播间)/);
-  if (m) results.roomName = m[1].trim();
-
+  const gmv = matchFirst(flatText, 'gmv', 'i');
+  if (gmv) results.gmv = gmv;
+  const refund = matchFirst(flatText, 'refund');
+  if (refund) results.refund = refund;
+  const gsv = matchFirst(flatText, 'gsv');
+  if (gsv) results.gsv = gsv;
+  const exposureTotal = matchFirst(flatText, 'exposure_total');
+  if (exposureTotal) results.exposureTotal = exposureTotal;
+  const cumulativeViewers = matchFirst(flatText, 'cumulative_viewers');
+  if (cumulativeViewers) results.cumulativeViewers = cumulativeViewers;
+  const avgWatchDuration = matchFirst(flatText, 'avg_watch_duration');
+  if (avgWatchDuration) results.avgWatchDuration = avgWatchDuration;
+  const exposureViewRate = matchFirst(flatText, 'exposure_view_rate');
+  if (exposureViewRate) results.exposureViewRate = exposureViewRate;
+  const interactionRate = matchFirst(flatText, 'interaction_rate');
+  if (interactionRate) results.interactionRate = interactionRate;
+  const productClickRate = matchFirst(flatText, 'product_click_rate');
+  if (productClickRate) results.productClickRate = productClickRate;
+  const followRate = matchFirst(flatText, 'follow_rate');
+  if (followRate) results.followRate = followRate;
+  const roomName = matchFirst(flatText, 'room_name');
+  if (roomName) results.roomName = roomName;
   return results;
 }
 
 // ---------- KPI 标准化 ----------
+function emptyKpi() {
+  return {
+    '直播间名称': null, 'GMV': null, '退款金额': null, 'GSV': null,
+    '总曝光次数': null, '累计观看人数': null, '人均观看时长': null,
+    '曝光观看率': null, '观看互动率': null, '商品点击率': null, '观看关注率': null
+  };
+}
+
 function normalizeKpi(raw) {
   const pageText = raw.pageText || '';
-  if (!pageText) {
-    return {
-      '直播间名称': null, 'GMV': null, '退款金额': null, 'GSV': null,
-      '总曝光次数': null, '累计观看人数': null, '人均观看时长': null,
-      '曝光观看率': null, '观看互动率': null, '商品点击率': null, '观看关注率': null
-    };
-  }
+  if (!pageText) return emptyKpi();
 
   const flat = flattenPageText(pageText);
   const matched = extractKpis(flat);
@@ -111,7 +151,6 @@ function normalizeKpi(raw) {
   let refund = cleanCurrency(matched.refund);
   let gsv = cleanCurrency(matched.gsv);
 
-  // GSV = GMV - 退款（若大屏没直接抓到）
   if (gsv == null && gmv != null && refund != null) {
     try {
       const gsvValue = parseFloat(gmv) - parseFloat(refund);
@@ -136,11 +175,19 @@ function normalizeKpi(raw) {
   };
 }
 
+function countMatchedKpis(kpi) {
+  const keys = Object.keys(emptyKpi());
+  let n = 0;
+  keys.forEach((k) => {
+    if (kpi[k] != null && kpi[k] !== '') n += 1;
+  });
+  return { matched: n, total: keys.length };
+}
+
 // ---------- 日报组装 ----------
 function formatReport({ roomCfg = {}, kpi = {}, userProfile = '', liveDuration = null, roomId = '' } = {}) {
   const today = new Date().toISOString().slice(0, 10).replace(/-/g, '.');
 
-  // V1.40：scraper 从 daping 提取的直播间名称仅当包含房间配置 label 时才采纳（防止 placeholder roomId 匹配到无关文本）
   const scrapedRoom = kpi['直播间名称'];
   const configLabel = roomCfg.label || '';
   const trustedScraped = scrapedRoom && configLabel && scrapedRoom.includes(configLabel) ? scrapedRoom : null;
@@ -173,20 +220,23 @@ function formatReport({ roomCfg = {}, kpi = {}, userProfile = '', liveDuration =
   ].join('\n');
 }
 
-// ---------- 用户画像标签解析（移植 A 的 parse_profile_text） ----------
-const TAG_RE = /([\d\u4e00-\u9fa5a-zA-Z][\u4e00-\u9fa5a-zA-Z0-9:\-]*?)\s*(\d+(?:\.\d+)?%)/g;
-
+// ---------- 用户画像标签解析 ----------
 function parseProfileText(rawText) {
   const flat = flattenPageText(rawText).replace(/看播核心用户画像/g, '');
+  let tagRe;
+  try {
+    tagRe = new RegExp(profileTagSource, 'g');
+  } catch (e) {
+    tagRe = new RegExp(DEFAULT_PROFILE_TAG, 'g');
+  }
 
   const tags = [];
   const seen = new Set();
   let m;
-  while ((m = TAG_RE.exec(flat)) !== null) {
+  while ((m = tagRe.exec(flat)) !== null) {
     const label = m[1].trim();
     const percent = m[2].trim();
     if (label.length < 1 || /^\d+$/.test(label)) continue;
-    // 过滤 KPI 指标标签（率、金额、人数等不应出现在画像中）
     if (/[率金额数次量比对比]/.test(label)) continue;
     const key = label + '|' + percent;
     if (seen.has(key)) continue;
@@ -208,5 +258,8 @@ module.exports = {
   formatReport,
   parseProfileText,
   flattenPageText,
-  isLoginPageText
+  isLoginPageText,
+  setKpiPatterns,
+  countMatchedKpis,
+  DEFAULT_SCRAPE_REGEX
 };
