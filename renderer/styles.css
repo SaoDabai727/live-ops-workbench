@@ -448,7 +448,16 @@ body {
 .toast-body {
   font-size: 12px;
   color: var(--muted);
+  line-height: 1.4;
+  white-space: pre-wrap;
 }
+.toast-clickable { cursor: pointer; }
+.toast-clickable:hover { border-color: rgba(232, 135, 58, 0.7); }
+.toast-update {
+  border-color: rgba(232, 135, 58, 0.55);
+  background: linear-gradient(135deg, rgba(42, 36, 31, 0.98), rgba(55, 40, 28, 0.96));
+}
+.toast-update .toast-title { color: #FFB56B; }
 @keyframes toast-slide-in {
   from { transform: translateX(120%); opacity: 0; }
   to { transform: translateX(0); opacity: 1; }
@@ -626,6 +635,7 @@ body {
   color: var(--muted);
   line-height: 1.4;
   word-break: break-word;
+  white-space: pre-wrap;
 }
 .update-banner-meta[hidden] { display: none !important; }
 .update-banner-progress {

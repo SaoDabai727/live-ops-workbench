@@ -1,6 +1,6 @@
 // updater.js — 云端升级（GitHub Releases / generic 静态资源，可选国内镜像）
 // 改 config/updater.json 即可切换升级源，无需改代码。
-const { app, ipcMain } = require('electron');
+const { app, ipcMain, Notification } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const debugLog = require('./debugLog');
@@ -17,7 +17,11 @@ const DEFAULT_CFG = {
   autoDownload: false,
   autoInstallOnAppQuit: true,
   checkDelayMs: 5000,
-  allowDevCheck: false
+  allowDevCheck: false,
+  // 版本发布通知
+  notifyOnRelease: true,
+  nativeNotify: true,
+  checkIntervalMs: 4 * 60 * 60 * 1000
 };
 
 function log(msg) {
@@ -127,6 +131,7 @@ function createUpdater({ getMainWindow }) {
     currentVersion: app.getVersion(),
     version: '',
     releaseNotes: '',
+    releaseName: '',
     percent: 0,
     bytesPerSecond: 0,
     transferred: 0,
@@ -135,16 +140,145 @@ function createUpdater({ getMainWindow }) {
     configured: false,
     enabled: false,
     packaged: app.isPackaged,
-    feedLabel: ''
+    feedLabel: '',
+    notify: false
   };
 
   let autoUpdater = null;
   let cfg = DEFAULT_CFG;
   let lastProgressAt = 0;
   let startupTimer = null;
+  let intervalTimer = null;
   let checkingPromise = null;
   let chosenMirror = '';
   let racePromise = null;
+  let lastNotifiedVersion = '';
+
+  function notifyStatePath() {
+    return path.join(app.getPath('userData'), 'config', 'update-notify.json');
+  }
+
+  function loadNotifyState() {
+    const data = readJson(notifyStatePath()) || {};
+    lastNotifiedVersion = String(data.lastNotifiedVersion || '');
+  }
+
+  function saveNotifyState() {
+    try {
+      const p = notifyStatePath();
+      fs.mkdirSync(path.dirname(p), { recursive: true });
+      fs.writeFileSync(p, JSON.stringify({
+        lastNotifiedVersion,
+        updatedAt: new Date().toISOString()
+      }, null, 2), 'utf-8');
+    } catch (e) {
+      log('保存通知状态失败 ' + (e && e.message));
+    }
+  }
+
+  function plainNotes(raw) {
+    if (!raw) return '';
+    let s = String(raw);
+    // electron-updater 有时给数组
+    if (Array.isArray(raw)) {
+      s = raw.map((x) => (typeof x === 'string' ? x : (x && x.note) || '')).join('\n');
+    }
+    return s
+      .replace(/\r\n/g, '\n')
+      .replace(/^#+\s*/gm, '')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/[*_`]/g, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
+  async function fetchGithubReleaseMeta(owner, repo, version) {
+    const headers = {
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'live-ops-workbench-updater'
+    };
+    const tryUrls = [
+      'https://api.github.com/repos/' + owner + '/' + repo + '/releases/tags/v' + version,
+      'https://api.github.com/repos/' + owner + '/' + repo + '/releases/tags/' + version,
+      'https://api.github.com/repos/' + owner + '/' + repo + '/releases/latest'
+    ];
+    for (let i = 0; i < tryUrls.length; i++) {
+      try {
+        const res = await fetch(tryUrls[i], { headers });
+        if (!res.ok) continue;
+        const data = await res.json();
+        const tag = String(data.tag_name || '').replace(/^v/i, '');
+        if (version && tag && tag !== String(version).replace(/^v/i, '') && i < 2) continue;
+        return {
+          name: data.name || '',
+          body: data.body || '',
+          url: data.html_url || ''
+        };
+      } catch (e) {
+        // try next
+      }
+    }
+    return null;
+  }
+
+  function showNativeNotify(version, notes) {
+    if (cfg.nativeNotify === false) return;
+    try {
+      if (!Notification.isSupported()) return;
+      const bodyLines = plainNotes(notes).split('\n').filter(Boolean).slice(0, 3);
+      const body = bodyLines.length
+        ? ('v' + version + '\n' + bodyLines.join(' · ').slice(0, 160))
+        : ('发现新版本 v' + version + '，点击查看并更新');
+      const n = new Notification({
+        title: '直播运营助手 · 新版本发布',
+        body,
+        silent: false
+      });
+      n.on('click', () => {
+        const win = getMainWindow && getMainWindow();
+        if (win && !win.isDestroyed()) {
+          if (win.isMinimized()) win.restore();
+          win.show();
+          win.focus();
+          win.webContents.send('updater-status', snapshot());
+        }
+      });
+      n.show();
+    } catch (e) {
+      log('系统通知失败 ' + (e && e.message));
+    }
+  }
+
+  async function announceRelease(info) {
+    const version = info && info.version ? String(info.version) : state.version;
+    if (!version) return;
+
+    let notes = (info && info.releaseNotes) ? plainNotes(info.releaseNotes) : state.releaseNotes;
+    let name = state.releaseName || '';
+    if (!notes || notes.length < 8) {
+      const meta = await fetchGithubReleaseMeta(cfg.owner || 'SaoDabai727', cfg.repo || 'live-ops-workbench', version);
+      if (meta) {
+        if (meta.body) notes = plainNotes(meta.body);
+        if (meta.name) name = meta.name;
+      }
+    }
+
+    const shouldNotify = cfg.notifyOnRelease !== false && lastNotifiedVersion !== version;
+    if (shouldNotify) {
+      lastNotifiedVersion = version;
+      saveNotifyState();
+      showNativeNotify(version, notes);
+    }
+
+    send({
+      status: 'available',
+      version,
+      releaseNotes: notes || '',
+      releaseName: name || '',
+      error: '',
+      notify: shouldNotify
+    });
+  }
 
   function snapshot() {
     return Object.assign({}, state);
@@ -168,19 +302,24 @@ function createUpdater({ getMainWindow }) {
       debug: () => {}
     };
     autoUpdater.on('checking-for-update', () => {
-      send({ status: 'checking', error: '' });
+      send({ status: 'checking', error: '', notify: false });
     });
     autoUpdater.on('update-available', (info) => {
-      send({
-        status: 'available',
-        version: info && info.version ? info.version : '',
-        releaseNotes: (info && info.releaseNotes) ? String(info.releaseNotes) : '',
-        error: ''
+      // 异步补全发布说明 + 推送通知
+      announceRelease(info || {}).catch((e) => {
+        log('发布通知失败 ' + (e && e.message));
+        send({
+          status: 'available',
+          version: info && info.version ? info.version : '',
+          releaseNotes: (info && info.releaseNotes) ? plainNotes(info.releaseNotes) : '',
+          error: '',
+          notify: false
+        });
       });
-      log('发现新版本 ' + state.version);
+      log('发现新版本 ' + ((info && info.version) || ''));
     });
     autoUpdater.on('update-not-available', () => {
-      send({ status: 'not-available', version: '', error: '' });
+      send({ status: 'not-available', version: '', error: '', notify: false });
     });
     autoUpdater.on('download-progress', (p) => {
       const now = Date.now();
@@ -191,7 +330,8 @@ function createUpdater({ getMainWindow }) {
         percent: p.percent || 0,
         bytesPerSecond: p.bytesPerSecond || 0,
         transferred: p.transferred || 0,
-        total: p.total || 0
+        total: p.total || 0,
+        notify: false
       });
     });
     autoUpdater.on('update-downloaded', (info) => {
@@ -199,13 +339,14 @@ function createUpdater({ getMainWindow }) {
         status: 'downloaded',
         version: info && info.version ? info.version : state.version,
         percent: 100,
-        error: ''
+        error: '',
+        notify: false
       });
       log('新版本已下载 ' + state.version);
     });
     autoUpdater.on('error', (err) => {
       const msg = (err && (err.message || err.stack)) ? String(err.message || err) : '未知错误';
-      send({ status: 'error', error: msg });
+      send({ status: 'error', error: msg, notify: false });
       log('错误 ' + msg);
     });
     return autoUpdater;
@@ -369,6 +510,7 @@ function createUpdater({ getMainWindow }) {
   }
 
   function init() {
+    loadNotifyState();
     applyFeed().catch((e) => log('初始化升级源失败 ' + (e && e.message)));
     ipcMain.handle('app-get-info', () => ({
       version: app.getVersion(),
@@ -392,11 +534,23 @@ function createUpdater({ getMainWindow }) {
         check({ userTriggered: false }).catch((e) => log('启动检查失败 ' + (e && e.message)));
       }, delay);
     }
+
+    // 运行期间定时复查，便于长开时收到版本发布通知
+    const intervalMs = Number(cfg.checkIntervalMs);
+    if (cfg.enabled && intervalMs > 0) {
+      intervalTimer = setInterval(() => {
+        if (state.status === 'downloading' || state.status === 'checking') return;
+        check({ userTriggered: false }).catch((e) => log('定时检查失败 ' + (e && e.message)));
+      }, Math.max(30 * 60 * 1000, intervalMs));
+      if (intervalTimer.unref) intervalTimer.unref();
+    }
   }
 
   function dispose() {
     if (startupTimer) clearTimeout(startupTimer);
     startupTimer = null;
+    if (intervalTimer) clearInterval(intervalTimer);
+    intervalTimer = null;
   }
 
   return { init, check, download, install, dismiss, dispose, getState: snapshot };

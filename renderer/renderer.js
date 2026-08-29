@@ -27,20 +27,69 @@
   const msgCounts = {}; // roomId -> 未读私信数
 
   // —— 全局通告：任意直播间新私信时右上角 Toast 通知 ——
-  function showToast(roomId, count) {
-    if (!state) return;
-    const room = state.liveRooms.find(r => r.id === roomId);
-    const label = room ? room.label : roomId;
+  function showToast(opts) {
+    const title = typeof opts === 'string' ? opts : (opts && opts.title) || '';
+    const body = typeof opts === 'string' ? '' : (opts && opts.body) || '';
+    const kind = (opts && opts.kind) || '';
+    const ttl = (opts && opts.ttl) || 4500;
+    const onClick = opts && opts.onClick;
     const toast = document.createElement('div');
-    toast.className = 'toast';
-    toast.innerHTML = '<div class="toast-title">' + label + ' · 新私信</div><div class="toast-body">收到 ' + count + ' 条消息</div>';
+    toast.className = 'toast' + (kind ? (' toast-' + kind) : '');
+    toast.innerHTML =
+      '<div class="toast-title"></div>' +
+      (body ? '<div class="toast-body"></div>' : '');
+    toast.querySelector('.toast-title').textContent = title;
+    const bodyEl = toast.querySelector('.toast-body');
+    if (bodyEl) bodyEl.textContent = body;
+    if (typeof onClick === 'function') {
+      toast.classList.add('toast-clickable');
+      toast.addEventListener('click', () => {
+        try { onClick(); } catch (_) {}
+      });
+    }
     toastContainer.appendChild(toast);
-    // 自动消失
     setTimeout(() => {
       toast.style.opacity = '0';
       toast.style.transform = 'translateX(20px)';
       setTimeout(() => toast.remove(), 250);
-    }, 4000);
+    }, ttl);
+  }
+
+  function showMsgToast(roomId, count) {
+    if (!state) return;
+    const room = state.liveRooms.find(r => r.id === roomId);
+    const label = room ? room.label : roomId;
+    showToast({
+      title: label + ' · 新私信',
+      body: '收到 ' + count + ' 条消息',
+      kind: 'msg'
+    });
+  }
+
+  let lastUpdateToastVersion = '';
+  function maybeNotifyRelease(s) {
+    if (!s || s.status !== 'available' || !s.version) return;
+    if (!s.notify) return;
+    if (lastUpdateToastVersion === s.version) return;
+    lastUpdateToastVersion = s.version;
+    const noteLine = String(s.releaseNotes || '')
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .slice(0, 2)
+      .join(' · ')
+      .slice(0, 100);
+    showToast({
+      title: '新版本 v' + s.version + ' 已发布',
+      body: noteLine || ('当前 v' + (s.currentVersion || '') + ' → 点击侧栏立即下载'),
+      kind: 'update',
+      ttl: 8000,
+      onClick: () => {
+        updateDismissed = false;
+        syncUpdateFooter(true);
+        if (typeof scheduleLayoutReport === 'function') scheduleLayoutReport();
+      }
+    });
   }
 
   const loginHealthBanner = document.getElementById('login-health-banner');
@@ -396,7 +445,7 @@
     }
     msgCounts[roomId] = (msgCounts[roomId] || 0) + (count || 1);
     renderSidebar();
-    showToast(roomId, count || 1);
+    showMsgToast(roomId, count || 1);
   });
   api.onRefreshPaused(paused => {
     btnPause.dataset.paused = paused ? '1' : '0';
@@ -422,6 +471,15 @@
     const rid = state ? state.currentRoomId : 'live1';
     const cnt = Math.floor(Math.random() * 5) + 1;
     api.testNewMessage(rid, cnt);
+  };
+  window.__testUpdateToast = () => {
+    maybeNotifyRelease({
+      status: 'available',
+      version: '9.9.9',
+      currentVersion: '1.0.0',
+      releaseNotes: '测试：子页拖拽排序\n测试：登录态健康提示',
+      notify: true
+    });
   };
 
   // —— 版本号 + 侧栏底部云端升级 ——
@@ -524,10 +582,19 @@
       syncUpdateFooter(true);
       setBannerTone('');
       updateText.textContent = '发现新版本 v' + s.version;
-      setUpdateMeta('当前 v' + s.currentVersion + ' → v' + s.version, true);
+      const noteLine = String(s.releaseNotes || '')
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .slice(0, 2)
+        .join(' · ')
+        .slice(0, 90);
+      const meta = '当前 v' + s.currentVersion + ' → v' + s.version + (noteLine ? ('\n' + noteLine) : '');
+      setUpdateMeta(meta, true);
       updateAction.textContent = '立即下载';
       updateAction.dataset.act = 'download';
       updateDismiss.textContent = '稍后';
+      maybeNotifyRelease(s);
     } else if (s.status === 'downloading') {
       updateDismissed = false;
       syncUpdateFooter(true);

@@ -1,6 +1,6 @@
 {
   "name": "live-ops-workbench",
-  "version": "1.5.15",
+  "version": "1.5.16",
   "description": "直播运营助手 - 多直播间监控与日报生成一体工作台",
   "main": "main/index.js",
   "author": "",
