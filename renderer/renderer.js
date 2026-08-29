@@ -3,6 +3,7 @@
 (function () {
   const api = window.workbench;
   const sidebar = document.getElementById('sidebar');
+  const sidebarRooms = document.getElementById('sidebar-rooms') || sidebar;
   const tabbar = document.getElementById('tabbar');
   const btnRefresh = document.getElementById('btn-refresh');
   const btnPause = document.getElementById('btn-pause');
@@ -88,11 +89,11 @@
   }
 
   function renderSidebar() {
-    sidebar.innerHTML = '';
+    sidebarRooms.innerHTML = '';
     const head = document.createElement('div');
     head.className = 'sidebar-head';
     head.innerHTML = '<span class="sidebar-label">直播间</span><span class="sidebar-count">' + state.liveRooms.length + '</span>';
-    sidebar.appendChild(head);
+    sidebarRooms.appendChild(head);
 
     state.liveRooms.forEach(room => {
       const el = document.createElement('div');
@@ -109,7 +110,7 @@
         el.appendChild(badge);
       }
       el.onclick = () => api.switchRoom(room.id);
-      sidebar.appendChild(el);
+      sidebarRooms.appendChild(el);
     });
     requestAnimationFrame(fitSidebarWidth);
   }
@@ -304,8 +305,9 @@
     api.testNewMessage(rid, cnt);
   };
 
-  // —— 版本号 + 云端升级横幅 ——
+  // —— 版本号 + 侧栏底部云端升级 ——
   const titleEl = document.querySelector('#toolbar .title');
+  const btnCheckUpdate = document.getElementById('btn-check-update');
   const updateBanner = document.getElementById('update-banner');
   const updateIcon = document.getElementById('update-banner-icon');
   const updateText = document.getElementById('update-banner-text');
@@ -343,11 +345,16 @@
     }
   }
 
+  function syncUpdateFooter(showBanner) {
+    if (btnCheckUpdate) btnCheckUpdate.hidden = !!showBanner;
+    if (updateBanner) updateBanner.hidden = !showBanner;
+  }
+
   function scheduleUpdateHide(ms) {
     clearUpdateHideTimer();
     updateHideTimer = setTimeout(() => {
       updateHideTimer = null;
-      if (updateBanner) updateBanner.hidden = true;
+      syncUpdateFooter(false);
     }, ms);
   }
 
@@ -370,10 +377,9 @@
 
   function renderUpdateBanner(s) {
     if (!s || !updateBanner) return;
-    const hide = () => { updateBanner.hidden = true; };
     const sticky = s.status === 'downloading' || s.status === 'downloaded' || s.status === 'checking';
     if (updateDismissed && !sticky && s.status !== 'available') {
-      hide();
+      syncUpdateFooter(false);
       return;
     }
 
@@ -387,7 +393,7 @@
 
     if (s.status === 'checking') {
       updateDismissed = false;
-      updateBanner.hidden = false;
+      syncUpdateFooter(true);
       setBannerTone('is-checking');
       if (updateIcon) updateIcon.textContent = '↻';
       updateText.textContent = '正在检查更新…';
@@ -396,16 +402,16 @@
       updateDismiss.textContent = '隐藏';
     } else if (s.status === 'available') {
       updateDismissed = false;
-      updateBanner.hidden = false;
+      syncUpdateFooter(true);
       setBannerTone('');
       updateText.textContent = '发现新版本 v' + s.version;
-      setUpdateMeta('当前 v' + s.currentVersion + ' → 可升级到 v' + s.version, true);
+      setUpdateMeta('当前 v' + s.currentVersion + ' → v' + s.version, true);
       updateAction.textContent = '立即下载';
       updateAction.dataset.act = 'download';
       updateDismiss.textContent = '稍后';
     } else if (s.status === 'downloading') {
       updateDismissed = false;
-      updateBanner.hidden = false;
+      syncUpdateFooter(true);
       setBannerTone('');
       const pct = Math.max(0, Math.min(100, s.percent || 0));
       updateProgressWrap.hidden = false;
@@ -420,16 +426,16 @@
       updateDismiss.hidden = true;
     } else if (s.status === 'downloaded') {
       updateDismissed = false;
-      updateBanner.hidden = false;
+      syncUpdateFooter(true);
       setBannerTone('is-ok');
       if (updateIcon) updateIcon.textContent = '✓';
-      updateText.textContent = '新版本 v' + s.version + ' 已就绪';
-      setUpdateMeta('重启后完成安装，可稍后在帮助菜单再次安装', true);
+      updateText.textContent = 'v' + s.version + ' 已就绪';
+      setUpdateMeta('重启后完成安装', true);
       updateAction.textContent = '立即重启安装';
       updateAction.dataset.act = 'install';
       updateDismiss.textContent = '稍后重启';
     } else if (s.status === 'not-available') {
-      updateBanner.hidden = false;
+      syncUpdateFooter(true);
       setBannerTone('is-ok');
       if (updateIcon) updateIcon.textContent = '✓';
       updateText.textContent = '已是最新版本';
@@ -438,23 +444,30 @@
       updateDismiss.textContent = '知道了';
       scheduleUpdateHide(3200);
     } else if (s.status === 'error' && s.error) {
-      updateBanner.hidden = false;
+      syncUpdateFooter(true);
       setBannerTone('is-error');
       if (updateIcon) updateIcon.textContent = '!';
       updateText.textContent = '更新失败';
-      setUpdateMeta(String(s.error).slice(0, 160), true);
+      setUpdateMeta(String(s.error).slice(0, 120), true);
       updateAction.textContent = '重试';
       updateAction.dataset.act = 'check';
       updateDismiss.textContent = '关闭';
     } else {
-      hide();
+      syncUpdateFooter(false);
     }
-    // 横幅显隐会改变 #content-slot 高度，需立刻同步 BrowserView 边界
+    // 侧栏宽度变化时同步内容区（一般不影响高度，仍保险上报）
     requestAnimationFrame(() => {
       if (typeof scheduleLayoutReport === 'function') scheduleLayoutReport();
     });
   }
 
+  if (btnCheckUpdate) {
+    btnCheckUpdate.onclick = () => {
+      updateDismissed = false;
+      btnCheckUpdate.disabled = true;
+      api.checkUpdate().finally(() => { btnCheckUpdate.disabled = false; });
+    };
+  }
   updateAction.onclick = () => {
     const act = updateAction.dataset.act;
     updateAction.disabled = true;
@@ -465,7 +478,7 @@
   updateDismiss.onclick = () => {
     updateDismissed = true;
     clearUpdateHideTimer();
-    updateBanner.hidden = true;
+    syncUpdateFooter(false);
     if (api.dismissUpdate) api.dismissUpdate();
     requestAnimationFrame(() => {
       if (typeof scheduleLayoutReport === 'function') scheduleLayoutReport();

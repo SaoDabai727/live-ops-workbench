@@ -33,26 +33,33 @@
     </div>
     <div id="toast-container"></div>
   </div>
-  <div id="update-banner" class="update-banner" hidden>
-    <div class="update-banner-icon" id="update-banner-icon" aria-hidden="true">↑</div>
-    <div class="update-banner-body">
-      <div class="update-banner-title" id="update-banner-text">正在检查更新…</div>
-      <div class="update-banner-meta" id="update-banner-meta" hidden></div>
-      <div class="update-banner-progress" id="update-progress-wrap" hidden>
-        <div class="update-progress-track">
-          <div id="update-progress-bar"></div>
-        </div>
-        <span class="update-progress-pct" id="update-progress-pct">0%</span>
-      </div>
-    </div>
-    <div class="update-banner-actions">
-      <button id="btn-update-action" class="update-btn primary" type="button">立即下载</button>
-      <button id="btn-update-dismiss" class="update-btn" type="button">稍后</button>
-    </div>
-  </div>
   <div id="loading-bar" class="loading-bar"></div>
   <div id="body">
-    <div id="sidebar"></div>
+    <aside id="sidebar">
+      <div id="sidebar-rooms"></div>
+      <div id="sidebar-footer">
+        <button id="btn-check-update" class="sidebar-check-btn" type="button" title="检查云端更新">检查更新</button>
+        <div id="update-banner" class="update-banner" hidden>
+          <div class="update-banner-top">
+            <div class="update-banner-icon" id="update-banner-icon" aria-hidden="true">↑</div>
+            <div class="update-banner-body">
+              <div class="update-banner-title" id="update-banner-text">正在检查更新…</div>
+              <div class="update-banner-meta" id="update-banner-meta" hidden></div>
+            </div>
+          </div>
+          <div class="update-banner-progress" id="update-progress-wrap" hidden>
+            <div class="update-progress-track">
+              <div id="update-progress-bar"></div>
+            </div>
+            <span class="update-progress-pct" id="update-progress-pct">0%</span>
+          </div>
+          <div class="update-banner-actions">
+            <button id="btn-update-action" class="update-btn primary" type="button">立即下载</button>
+            <button id="btn-update-dismiss" class="update-btn" type="button">稍后</button>
+          </div>
+        </div>
+      </div>
+    </aside>
     <div id="main">
       <div id="tabbar"></div>
       <!-- 飞书文档链接弹窗（备用；实际使用独立子窗口） -->
