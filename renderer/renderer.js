@@ -455,6 +455,10 @@
     } else {
       hide();
     }
+    // 横幅显隐会改变 #content-slot 高度，需立刻同步 BrowserView 边界
+    requestAnimationFrame(() => {
+      if (typeof scheduleLayoutReport === 'function') scheduleLayoutReport();
+    });
   }
 
   updateAction.onclick = () => {
@@ -469,6 +473,9 @@
     clearUpdateHideTimer();
     updateBanner.hidden = true;
     if (api.dismissUpdate) api.dismissUpdate();
+    requestAnimationFrame(() => {
+      if (typeof scheduleLayoutReport === 'function') scheduleLayoutReport();
+    });
   };
 
   if (api.getAppInfo) {
