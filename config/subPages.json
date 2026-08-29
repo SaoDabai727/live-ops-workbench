@@ -33,6 +33,14 @@
       "refreshInterval": 0
     }
   },
+  "subPageOrder": [
+    "juliang",
+    "daping",
+    "report",
+    "privateMsg",
+    "doc",
+    "baojia"
+  ],
   "layout": {
     "sidebarWidth": 128,
     "toolbarHeight": 42,
@@ -50,7 +58,10 @@
     "larksuite.com",
     "www.larksuite.com"
   ],
-  "authCallbackSchemes": ["myapp://callback", "http://127.0.0.1:0/callback"],
+  "authCallbackSchemes": [
+    "myapp://callback",
+    "http://127.0.0.1:0/callback"
+  ],
   "keepAliveMax": 2,
   "viewPoolSize": 2,
   "preloadDelayMs": 5000,

@@ -326,11 +326,20 @@ body {
   align-items: center;
   padding: 0 14px;
   font-size: 12.5px; font-weight: 500;
-  cursor: pointer;
+  cursor: grab;
   border-bottom: 2px solid transparent;
   color: var(--muted);
-  transition: color .18s ease, background .18s ease, border-color .18s ease;
+  transition: color .18s ease, background .18s ease, border-color .18s ease, opacity .15s ease;
   border-radius: 6px 6px 0 0;
+  user-select: none;
+}
+.tab-item:active { cursor: grabbing; }
+.tab-item.dragging {
+  opacity: 0.45;
+}
+.tab-item.drag-over {
+  box-shadow: inset 2px 0 0 var(--accent);
+  background: rgba(232, 135, 58, 0.12);
 }
 .tab-item:hover {
   color: var(--text);

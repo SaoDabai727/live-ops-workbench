@@ -131,8 +131,32 @@ function syncSubPagesFromBundle(srcDir, userDir) {
       });
       user.urlWhitelist = Array.from(set);
     }
+    // 维护子页拖拽顺序：保留用户排序，追加新页、去掉已删页
+    const normalized = normalizeSubPageOrder(user.subPageOrder, user.subPages);
+    if (JSON.stringify(normalized) !== JSON.stringify(user.subPageOrder || [])) {
+      user.subPageOrder = normalized;
+      changed = true;
+    }
     if (changed) saveJson(destPath, user);
   } catch (e) {}
+}
+
+/** 校验并补全子页顺序（已知页按 order，未知页追加到末尾） */
+function normalizeSubPageOrder(order, subPages) {
+  const keys = Object.keys(subPages || {});
+  const keySet = new Set(keys);
+  const seen = new Set();
+  const out = [];
+  (Array.isArray(order) ? order : []).forEach((k) => {
+    if (keySet.has(k) && !seen.has(k)) {
+      out.push(k);
+      seen.add(k);
+    }
+  });
+  keys.forEach((k) => {
+    if (!seen.has(k)) out.push(k);
+  });
+  return out;
 }
 
 // ------ 迁移旧 A/B 配置（首次运行时执行）------
@@ -214,6 +238,7 @@ setKpiPatterns(kpiCfg);
 const config = {
   liveRooms: roomsCfg.liveRooms || [],
   subPages: subCfg.subPages || {},
+  subPageOrder: normalizeSubPageOrder(subCfg.subPageOrder, subCfg.subPages || {}),
   layout: subCfg.layout || { sidebarWidth: 148, toolbarHeight: 46, tabBarHeight: 40 },
   urlWhitelist: subCfg.urlWhitelist || [],
   authCallbackSchemes: subCfg.authCallbackSchemes || ['myapp://callback'],
@@ -248,6 +273,25 @@ function saveCustomUrls(data) {
 }
 
 function getSubPageConfig(subPage) { return config.subPages[subPage]; }
+
+function getOrderedSubPageKeys() {
+  return normalizeSubPageOrder(config.subPageOrder, config.subPages);
+}
+
+const SUBPAGES_PATH = path.join(configDir(), 'subPages.json');
+
+/** 持久化子页拖拽顺序（仅改 order，不动各页配置） */
+function saveSubPageOrder(order) {
+  const next = normalizeSubPageOrder(order, config.subPages);
+  let data = loadJson(SUBPAGES_PATH) || {};
+  data.subPages = data.subPages || config.subPages;
+  data.subPageOrder = next;
+  if (!data.layout) data.layout = config.layout;
+  if (!data.urlWhitelist) data.urlWhitelist = config.urlWhitelist;
+  saveJson(SUBPAGES_PATH, data);
+  config.subPageOrder = next;
+  return next;
+}
 
 function getDefaultUrl(roomId, subPage) {
   const custom = loadCustomUrls();
@@ -342,6 +386,7 @@ function reportDir(roomId) {
 module.exports = {
   config, configDir, reportsDir, logsDir,
   getSubPageConfig, getDefaultUrl, isUrlAllowed,
+  getOrderedSubPageKeys, saveSubPageOrder, normalizeSubPageOrder,
   loadCustomUrls, saveCustomUrls,
   loadRooms, saveRooms,
   loadNavState, saveNavState,

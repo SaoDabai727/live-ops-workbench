@@ -8,6 +8,8 @@ const api = {
   switchRoom: (roomId) => ipcRenderer.send('switch-room', roomId),
   // 切换二级功能页
   switchSubPage: (subPage) => ipcRenderer.send('switch-subpage', subPage),
+  // 拖拽重排子页 Tab 顺序
+  reorderSubPages: (order) => ipcRenderer.invoke('reorder-subpages', order),
   // 刷新当前页
   refreshCurrent: () => ipcRenderer.send('refresh-current'),
   // 暂停/恢复自动刷新（传 true 暂停）

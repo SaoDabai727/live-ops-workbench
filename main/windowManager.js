@@ -1,7 +1,7 @@
 // windowManager.js — 窗口与 BrowserView 编排、运行时状态、IPC 调度
 // 对应设计文档第 2、3、8、12 节
 const { ipcMain } = require('electron');
-const { config, getDefaultUrl, loadCustomUrls, saveCustomUrls } = require('./config');
+const { config, getDefaultUrl, loadCustomUrls, saveCustomUrls, saveSubPageOrder, getOrderedSubPageKeys } = require('./config');
 const { createWebViewFactory } = require('./webviewFactory');
 const { createAuthManager } = require('./authManager');
 const { createRefreshManager } = require('./refreshManager');
@@ -193,6 +193,7 @@ function createWindowManager({ mainWindow }) {
         ...appState,
         liveRooms: config.liveRooms,
         subPages: config.subPages,
+        subPageOrder: getOrderedSubPageKeys(),
         layout: config.layout,
         customUrls: freshCustom,
         loginHealth: getLoginHealth()
@@ -379,6 +380,15 @@ function createWindowManager({ mainWindow }) {
     });
     ipcMain.on('switch-subpage', (e, subPage) => {
       showView(appState.currentRoomId, subPage);
+    });
+    ipcMain.handle('reorder-subpages', (event, order) => {
+      try {
+        const next = saveSubPageOrder(order);
+        pushState();
+        return { ok: true, order: next };
+      } catch (err) {
+        return { ok: false, error: err.message || String(err) };
+      }
     });
     ipcMain.on('refresh-current', () => {
       const v = factory.getCurrentView();

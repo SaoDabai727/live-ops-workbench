@@ -153,13 +153,93 @@
     requestAnimationFrame(fitSidebarWidth);
   }
 
+  function orderedSubPageEntries() {
+    const pages = state.subPages || {};
+    const order = Array.isArray(state.subPageOrder) && state.subPageOrder.length
+      ? state.subPageOrder
+      : Object.keys(pages);
+    const seen = new Set();
+    const entries = [];
+    order.forEach((key) => {
+      if (pages[key] && !seen.has(key)) {
+        entries.push([key, pages[key]]);
+        seen.add(key);
+      }
+    });
+    Object.keys(pages).forEach((key) => {
+      if (!seen.has(key)) entries.push([key, pages[key]]);
+    });
+    return entries;
+  }
+
+  let tabDragKey = null;
+  let tabDidDrag = false;
+
   function renderTabbar() {
     tabbar.innerHTML = '';
-    Object.entries(state.subPages).forEach(([key, cfg]) => {
+    orderedSubPageEntries().forEach(([key, cfg]) => {
       const el = document.createElement('div');
       el.className = 'tab-item' + (key === state.currentSubPage ? ' active' : '');
       el.textContent = cfg.label;
+      el.draggable = true;
+      el.dataset.subPage = key;
+      el.title = '拖动可调整顺序';
+
+      el.addEventListener('dragstart', (e) => {
+        tabDragKey = key;
+        tabDidDrag = false;
+        el.classList.add('dragging');
+        try {
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', key);
+        } catch (_) {}
+      });
+      el.addEventListener('dragend', () => {
+        tabDragKey = null;
+        el.classList.remove('dragging');
+        tabbar.querySelectorAll('.tab-item.drag-over').forEach((n) => n.classList.remove('drag-over'));
+      });
+      el.addEventListener('dragover', (e) => {
+        if (!tabDragKey || tabDragKey === key) return;
+        e.preventDefault();
+        try { e.dataTransfer.dropEffect = 'move'; } catch (_) {}
+        tabbar.querySelectorAll('.tab-item.drag-over').forEach((n) => {
+          if (n !== el) n.classList.remove('drag-over');
+        });
+        el.classList.add('drag-over');
+      });
+      el.addEventListener('dragleave', () => {
+        el.classList.remove('drag-over');
+      });
+      el.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        el.classList.remove('drag-over');
+        const from = tabDragKey || (e.dataTransfer && e.dataTransfer.getData('text/plain'));
+        const to = key;
+        if (!from || from === to || !api.reorderSubPages) return;
+        tabDidDrag = true;
+        const order = orderedSubPageEntries().map(([k]) => k);
+        const fromIdx = order.indexOf(from);
+        const toIdx = order.indexOf(to);
+        if (fromIdx < 0 || toIdx < 0) return;
+        order.splice(fromIdx, 1);
+        order.splice(toIdx, 0, from);
+        // 乐观更新 UI
+        state.subPageOrder = order.slice();
+        renderTabbar();
+        try {
+          const res = await api.reorderSubPages(order);
+          if (res && res.ok && Array.isArray(res.order)) {
+            state.subPageOrder = res.order;
+          }
+        } catch (_) {}
+      });
+
       el.onclick = () => {
+        if (tabDidDrag) {
+          tabDidDrag = false;
+          return;
+        }
         // 飞书文档类：首次进入需填写链接
         if (cfg.kind === 'feishuDoc') {
           const urlKey = `${state.currentRoomId}_${key}`;
