@@ -1,0 +1,30 @@
+---
+description: User-facing fixes must ship as a GitHub Release; finish push/release without re-prompting
+alwaysApply: true
+---
+
+# Ship through in-app update
+
+Installed clients update only via **GitHub Releases** (`electron-updater` + `config/updater.json`). A `main` commit alone does **not** reach users.
+
+## When this applies
+
+Any user-visible bugfix, UX change, or behavior change meant for installed apps (unless the user says code-only / 先不发版 / 不要发版).
+
+## Default finish line (do not stop early)
+
+1. Bump `package.json` patch version (e.g. 1.5.16 → 1.5.17).
+2. Add a `CHANGELOG.md` section for that version.
+3. `npm run build` (NSIS Setup + Portable).
+4. Commit version + changelog + code; push `main` (bypass broken local proxy with `git -c http.proxy= -c https.proxy=` if needed).
+5. Create tag `vX.Y.Z` and `gh release create` with Setup / Portable / `latest.yml` / `.blockmap`, title like `vX.Y.Z 直播运营助手`, notes from CHANGELOG.
+
+## Do not make the user re-remind
+
+- After they ask to 发版 / 升级 / 推送 a shippable change, complete build + release + push in the same effort.
+- Do not leave “code pushed, release later” unless they explicitly defer release.
+- Switching chats/windows is not a reason to drop the release step.
+
+## Release assets (match prior releases)
+
+Upload at least: `live-ops-workbench-Setup-X.Y.Z.exe`, `.blockmap`, `live-ops-workbench-Portable-X.Y.Z.exe`, `latest.yml`.
