@@ -9,9 +9,22 @@ const { createUpdater } = require('./updater');
 // 必须在 app.ready 之前注册，才能接管 bytedance:// 等协议
 registerPrivilegedSchemes();
 
+// 单实例锁：已有实例时退出本次启动，并把原窗口拉到前台
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+}
+
 let mainWindow = null;
 let windowManager = null;
 let updater = null;
+
+app.on('second-instance', () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  if (!mainWindow.isVisible()) mainWindow.show();
+  mainWindow.focus();
+});
 
 function bumpZoom(delta) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
@@ -54,6 +67,8 @@ function createMainWindow() {
 }
 
 app.whenReady().then(() => {
+  if (!gotTheLock) return;
+
   installProtocolGuard();
 
   // 自定义中文应用菜单（替代默认英文菜单）
