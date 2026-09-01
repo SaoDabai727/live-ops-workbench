@@ -46,7 +46,7 @@ function initConfig() {
   const userDir = configDir();
   const srcDir = path.join(__dirname, '..', 'config');
   ensureDir(userDir);
-  ['rooms.json', 'subPages.json', 'kpiPatterns.json', 'customUrls.json'].forEach(f => {
+  ['rooms.json', 'subPages.json', 'kpiPatterns.json', 'customUrls.json', 'notify.json'].forEach(f => {
     const dest = path.join(userDir, f);
     if (!fs.existsSync(dest)) {
       const src = path.join(srcDir, f);
@@ -56,6 +56,7 @@ function initConfig() {
   // 打包升级后：把内置 subPages / kpiPatterns 的新增项合并进用户配置
   syncSubPagesFromBundle(srcDir, userDir);
   syncKpiPatternsFromBundle(srcDir, userDir);
+  syncNotifyFromBundle(srcDir, userDir);
 }
 
 function syncKpiPatternsFromBundle(srcDir, userDir) {
@@ -383,6 +384,49 @@ function saveNavState(state) {
   fs.writeFileSync(NAV_STATE_PATH, JSON.stringify(state, null, 2), 'utf-8');
 }
 
+// ------ 飞书推送配置 ------
+const NOTIFY_DEFAULTS = {
+  feishuWebhook: '',
+  feishuAppId: '',
+  feishuAppSecret: '',
+  feishuSignSecret: ''
+};
+
+function notifyPath() {
+  return path.join(configDir(), 'notify.json');
+}
+
+function loadNotify() {
+  const data = loadJson(notifyPath()) || {};
+  return {
+    feishuWebhook: String(data.feishuWebhook || ''),
+    feishuAppId: String(data.feishuAppId || ''),
+    feishuAppSecret: String(data.feishuAppSecret || ''),
+    feishuSignSecret: String(data.feishuSignSecret || '')
+  };
+}
+
+function saveNotify(partial) {
+  const next = { ...NOTIFY_DEFAULTS, ...loadNotify(), ...(partial || {}) };
+  saveJson(notifyPath(), {
+    feishuWebhook: String(next.feishuWebhook || ''),
+    feishuAppId: String(next.feishuAppId || ''),
+    feishuAppSecret: String(next.feishuAppSecret || ''),
+    feishuSignSecret: String(next.feishuSignSecret || '')
+  });
+  return loadNotify();
+}
+
+/** 打包升级：用户目录缺 notify.json 时从内置复制；已有则不覆盖用户改动 */
+function syncNotifyFromBundle(srcDir, userDir) {
+  const srcPath = path.join(srcDir, 'notify.json');
+  const destPath = path.join(userDir, 'notify.json');
+  if (!fs.existsSync(srcPath)) return;
+  if (!fs.existsSync(destPath)) {
+    try { fs.copyFileSync(srcPath, destPath); } catch (e) {}
+  }
+}
+
 // ------ 日报保存 ------
 function saveReport(roomId, reportText) {
   const date = new Date().toISOString().slice(0, 10);
@@ -392,6 +436,15 @@ function saveReport(roomId, reportText) {
   // 同时保存 last_report 用于恢复
   ensureDir(logsDir());
   fs.writeFileSync(path.join(logsDir(), 'last_report_' + roomId + '.txt'), reportText, 'utf-8');
+}
+
+function saveReportScreenshot(roomId, pngBuffer) {
+  const date = new Date().toISOString().slice(0, 10);
+  const dir = path.join(reportsDir(), roomId);
+  ensureDir(dir);
+  const filePath = path.join(dir, date + '.png');
+  fs.writeFileSync(filePath, pngBuffer);
+  return filePath;
 }
 
 function loadLastReport(roomId) {
@@ -413,6 +466,7 @@ module.exports = {
   loadCustomUrls, saveCustomUrls,
   loadRooms, saveRooms,
   loadNavState, saveNavState,
-  saveReport, loadLastReport, reportDir,
+  loadNotify, saveNotify,
+  saveReport, saveReportScreenshot, loadLastReport, reportDir,
   syncRoomIdFromDailyUrl
 };

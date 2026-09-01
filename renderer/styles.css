@@ -499,6 +499,8 @@ body {
   display: flex;
   gap: 8px;
   margin-left: auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 .report-btn {
   padding: 6px 14px;
@@ -524,6 +526,21 @@ body {
 .report-btn.primary:hover {
   background: var(--accent-bright);
   border-color: var(--accent-bright);
+}
+.report-btn.confirm {
+  background: rgba(91, 174, 110, 0.16);
+  border-color: #5BAE6E;
+  color: #8FD49E;
+  font-weight: 650;
+}
+.report-btn.confirm:hover:not(:disabled) {
+  background: rgba(91, 174, 110, 0.28);
+  border-color: #6FBE82;
+  color: #B7E8C2;
+}
+.report-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 .report-editor {
   flex: 1;

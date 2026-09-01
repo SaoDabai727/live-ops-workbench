@@ -58,6 +58,8 @@ const api = {
     ipcRenderer.invoke('save-report', { roomId, reportText }),
   copyReport: (reportText) =>
     ipcRenderer.invoke('copy-report', { reportText }),
+  confirmReport: (roomId, reportText) =>
+    ipcRenderer.invoke('confirm-report', { roomId, reportText }),
 
   // 自动点讲解：强制在当前页显示控制面板
   forceExplainPanel: () => ipcRenderer.invoke('explain-force-panel'),

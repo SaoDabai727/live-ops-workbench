@@ -1,0 +1,6 @@
+{
+  "feishuWebhook": "https://open.feishu.cn/open-apis/bot/v2/hook/6a57458d-c1a5-4f77-83b2-d517d880b22e",
+  "feishuAppId": "",
+  "feishuAppSecret": "",
+  "feishuSignSecret": ""
+}

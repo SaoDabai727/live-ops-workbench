@@ -179,6 +179,22 @@ test('shouldReloadPreloaded 同 URL 不重载', () => {
   );
 });
 
+console.log('\n=== feishuNotify ===');
+const feishu = require('../main/feishuNotify');
+
+test('buildSignHeaders 空密钥不签名', () => {
+  assert.deepStrictEqual(feishu.buildSignHeaders(''), {});
+  assert.deepStrictEqual(feishu.buildSignHeaders(null), {});
+});
+
+test('buildSignHeaders 生成 timestamp + sign', () => {
+  const h = feishu.buildSignHeaders('test-secret');
+  assert.ok(h.timestamp);
+  assert.ok(h.sign);
+  assert.strictEqual(typeof h.sign, 'string');
+  assert.ok(h.sign.length > 10);
+});
+
 console.log('\n=== 结果 ===');
 console.log('通过: ' + passed + '  失败: ' + failed);
 process.exit(failed ? 1 : 0);

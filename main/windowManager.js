@@ -8,8 +8,9 @@ const { createRefreshManager } = require('./refreshManager');
 const { createBackgroundServices } = require('./backgroundServices');
 const { createPromptWindow } = require('./promptWindow');
 const { createRoomManagerWindow } = require('./roomManager');
-const { saveRooms, loadRooms, loadNavState, saveNavState, saveReport, loadLastReport, syncRoomIdFromDailyUrl } = require('./config');
+const { saveRooms, loadRooms, loadNavState, saveNavState, saveReport, saveReportScreenshot, loadLastReport, loadNotify, saveNotify, syncRoomIdFromDailyUrl } = require('./config');
 const { generateReport, scrapeProfile } = require('./reportManager');
+const { pushReportToFeishu } = require('./feishuNotify');
 const { forceExplainPanel } = require('./explainManager');
 const { looksLikeCompassAccessDeniedPage, isPlaceholderRoomId, parseLiveRoomId, looksLikeLoginUrl, isCompassLiveScreenUrl } = require('./compassUrl');
 const { isLoginPageText } = require('./reportGenerator');
@@ -17,6 +18,9 @@ const { clipboard } = require('electron');
 const debugLog = require('./debugLog');
 const { cssRectToViewBounds } = require('./layoutBounds');
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 const LOGIN_CHECK_JS = `(() => {
   try {
     const t = (document.body && document.body.innerText) ? document.body.innerText.slice(0, 4000) : '';
@@ -578,13 +582,100 @@ function createWindowManager({ mainWindow }) {
       }
     });
 
+    // 确定日报：保存文本 → 切大屏截图 → 推飞书群 → 回到日报页
+    ipcMain.handle('confirm-report', async (event, { roomId, reportText }) => {
+      const rid = roomId || appState.currentRoomId;
+      const text = String(reportText || '').trim();
+      if (!text) {
+        return { ok: false, error: '日报内容为空，请先生成日报' };
+      }
+      if (text.startsWith('错误：') || text.startsWith('异常：')) {
+        return { ok: false, error: '当前是错误信息，请先成功生成日报' };
+      }
+
+      const roomCfg = config.liveRooms.find(r => r.id === rid) || {};
+      const notify = loadNotify();
+      if (!String(notify.feishuWebhook || '').trim()) {
+        return { ok: false, error: '未配置飞书 Webhook，请在「直播间管理」填写后重试' };
+      }
+
+      try {
+        saveReport(rid, text);
+      } catch (e) {
+        return { ok: false, error: '保存日报失败：' + (e.message || e) };
+      }
+
+      const prevSub = appState.currentSubPage;
+      let pngBuffer = null;
+      let shotPath = '';
+
+      try {
+        // 必须短暂展示大屏，capturePage 在 0×0 屏外视图上常得到空白图
+        showView(rid, 'daping');
+        await sleep(900);
+        const view = factory.getCurrentView();
+        if (!view || view.webContents.isDestroyed()) {
+          throw new Error('直播大屏视图不可用');
+        }
+        if (view.webContents.isLoading()) {
+          await Promise.race([
+            new Promise((resolve) => view.webContents.once('did-stop-loading', resolve)),
+            sleep(8000)
+          ]);
+          await sleep(400);
+        }
+        applyViewBounds();
+        await sleep(200);
+        const image = await view.webContents.capturePage();
+        pngBuffer = image && !image.isEmpty() ? image.toPNG() : null;
+        if (pngBuffer && pngBuffer.length) {
+          shotPath = saveReportScreenshot(rid, pngBuffer);
+        }
+      } catch (e) {
+        debugLog.log('[confirm-report] screenshot failed: ' + (e.message || e));
+        // 截图失败仍尝试推文本
+      } finally {
+        try { showView(rid, prevSub === 'daping' ? 'report' : (prevSub || 'report')); } catch (_) {}
+      }
+
+      try {
+        const push = await pushReportToFeishu({
+          notify,
+          reportText: text,
+          pngBuffer,
+          roomLabel: roomCfg.label || rid
+        });
+        const parts = [];
+        if (push.textSent) parts.push('文本已发到飞书群');
+        if (push.imageSent) parts.push('大屏截图已发送');
+        else if (push.imageSkippedReason) parts.push(push.imageSkippedReason);
+        return {
+          ok: true,
+          textSent: !!push.textSent,
+          imageSent: !!push.imageSent,
+          shotPath,
+          message: parts.join('；') || '已推送'
+        };
+      } catch (e) {
+        return {
+          ok: false,
+          error: e.message || String(e),
+          shotPath,
+          textSent: false,
+          imageSent: false
+        };
+      }
+    });
+
     // 打开直播间管理对话框
     ipcMain.on('open-room-manager', () => {
       const roomData = loadRooms();
+      const notifyData = loadNotify();
       createRoomManagerWindow({
         mainWindow,
         rooms: roomData,
-        onSave: (updatedRooms) => {
+        notify: notifyData,
+        onSave: (updatedRooms, updatedNotify) => {
           // 清理已删除房间的关联状态
           const oldRoomIds = new Set(config.liveRooms.map(r => r.id));
           const newRoomIds = new Set(updatedRooms.map(r => r.id));
@@ -597,6 +688,7 @@ function createWindowManager({ mainWindow }) {
             }
           });
           saveRooms(updatedRooms);
+          if (updatedNotify) saveNotify(updatedNotify);
           // V1.37：saveRooms 已设置 config.liveRooms = updatedRooms，不再重复操作
           const newPages = {};
           updatedRooms.forEach(r => {

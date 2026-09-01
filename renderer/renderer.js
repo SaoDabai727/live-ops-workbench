@@ -20,11 +20,23 @@
   const reportPanel = document.getElementById('report-panel');
   const reportEditor = document.getElementById('report-editor');
   const btnScrapeReport = document.getElementById('btn-scrape-report');
+  const btnConfirmReport = document.getElementById('btn-confirm-report');
   const btnScrapeProfile = document.getElementById('btn-scrape-profile');
   const btnCopyReport = document.getElementById('btn-copy-report');
   const btnSaveReport = document.getElementById('btn-save-report');
   const reportStatus = document.getElementById('report-status');
 
+  function isUsableReportText(text) {
+    const t = String(text || '').trim();
+    if (!t) return false;
+    if (t.startsWith('错误：') || t.startsWith('异常：')) return false;
+    return true;
+  }
+
+  function syncConfirmButton() {
+    if (!btnConfirmReport) return;
+    btnConfirmReport.disabled = !isUsableReportText(reportEditor.value);
+  }
   let state = null;
   const msgCounts = {}; // roomId -> 未读私信数
 
@@ -146,6 +158,7 @@
     if (isReport && state.lastReport && !reportEditor.value) {
       reportEditor.value = state.lastReport;
     }
+    syncConfirmButton();
     // 工具栏按钮：report 页隐藏刷新/暂停/复位/后退前进；非巨量百应隐藏讲解面板
     const isReportPage = state.currentSubPage === 'report';
     const isJuliang = state.currentSubPage === 'juliang';
@@ -356,6 +369,7 @@
   // —— 日报按钮 ——
   btnScrapeReport.onclick = async () => {
     btnScrapeReport.disabled = true;
+    if (btnConfirmReport) btnConfirmReport.disabled = true;
     reportStatus.textContent = '正在抓取直播大屏数据...';
     reportStatus.style.color = '#E8873A';
     try {
@@ -366,7 +380,7 @@
         reportStatus.style.color = '#EF4444';
       } else {
         reportEditor.value = result.report;
-        reportStatus.textContent = '生成完成 ' + new Date().toLocaleTimeString('zh-CN', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+        reportStatus.textContent = '生成完成 ' + new Date().toLocaleTimeString('zh-CN', {hour:'2-digit',minute:'2-digit',second:'2-digit'}) + ' · 可点「确定日报」推送飞书';
         reportStatus.style.color = '#E8873A';
       }
     } catch (e) {
@@ -375,7 +389,34 @@
       reportStatus.style.color = '#EF4444';
     }
     btnScrapeReport.disabled = false;
+    syncConfirmButton();
   };
+  if (btnConfirmReport) {
+    btnConfirmReport.onclick = async () => {
+      const text = reportEditor.value;
+      if (!isUsableReportText(text)) return;
+      btnConfirmReport.disabled = true;
+      btnScrapeReport.disabled = true;
+      reportStatus.textContent = '正在截图直播大屏并推送飞书群...';
+      reportStatus.style.color = '#E8873A';
+      try {
+        const res = await api.confirmReport(state.currentRoomId, text);
+        if (res && res.ok) {
+          reportStatus.textContent = res.message || '已推送到飞书群';
+          reportStatus.style.color = '#5BAE6E';
+        } else {
+          reportStatus.textContent = (res && res.error) || '推送失败';
+          reportStatus.style.color = '#EF4444';
+        }
+      } catch (e) {
+        reportStatus.textContent = '推送异常：' + (e.message || '未知错误');
+        reportStatus.style.color = '#EF4444';
+      }
+      btnScrapeReport.disabled = false;
+      syncConfirmButton();
+    };
+  }
+  reportEditor.addEventListener('input', syncConfirmButton);
   // 抓取用户画像（需先在「直播大屏」内切换到「人群」标签页）
   btnScrapeProfile.onclick = async () => {
     btnScrapeProfile.disabled = true;
@@ -438,6 +479,7 @@
       reportEditor.value = '';
       reportStatus.textContent = '';
       loginHealthDismissedKey = '';
+      syncConfirmButton();
     }
     render();
     // 加载进度条

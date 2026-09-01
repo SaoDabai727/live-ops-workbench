@@ -163,14 +163,58 @@ body {
 .actions .save:hover {
   background: var(--accent-bright); border-color: var(--accent-bright);
 }
+
+.notify-card {
+  margin-top: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px 16px;
+  flex-shrink: 0;
+}
+.notify-card .section-label {
+  font-size: 12px; color: var(--accent-bright); font-weight: 700;
+  letter-spacing: .2px; margin-bottom: 4px;
+}
+.notify-card .section-hint {
+  font-size: 11px; color: var(--muted); line-height: 1.45; margin-bottom: 12px;
+}
+.notify-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.notify-grid .field.full { grid-column: 1 / -1; }
 </style>
 </head>
 <body>
 <div class="header">
   <h2>直播间管理</h2>
-  <span class="hint">日报请在「直播日报」页手动生成</span>
+  <span class="hint">日报请在「直播日报」页手动生成；确定日报后推送飞书群</span>
 </div>
 <div id="room-list" class="room-list"></div>
+<div class="notify-card" id="notify-card">
+  <div class="section-label">飞书推送（共用）</div>
+  <div class="section-hint">Webhook 可发文本；发大屏截图还需开放平台 App ID / Secret（开通上传图片权限）。签名校验密钥可选。</div>
+  <div class="notify-grid">
+    <div class="field full">
+      <span class="field-label">Webhook</span>
+      <input id="feishu-webhook" type="text" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/..." />
+    </div>
+    <div class="field">
+      <span class="field-label">App ID（发截图）</span>
+      <input id="feishu-app-id" type="text" placeholder="cli_xxx" />
+    </div>
+    <div class="field">
+      <span class="field-label">App Secret</span>
+      <input id="feishu-app-secret" type="password" placeholder="应用密钥" />
+    </div>
+    <div class="field full">
+      <span class="field-label">签名校验密钥（可选）</span>
+      <input id="feishu-sign-secret" type="password" placeholder="机器人安全设置里的签名密钥" />
+    </div>
+  </div>
+</div>
 <div class="footer">
   <button id="btn-add">＋ 添加直播间</button>
   <div class="actions">

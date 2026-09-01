@@ -1,9 +1,9 @@
-// room-mgr.js — 直播间管理弹窗（主播逐条管理版）
+// room-mgr.js — 直播间管理弹窗（主播逐条管理 + 飞书推送配置）
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('roomMgrApi', {
   init: (cb) => ipcRenderer.on('room-mgr-init', (_e, data) => cb(data)),
-  save: (rooms) => ipcRenderer.send('room-mgr-save', rooms),
+  save: (payload) => ipcRenderer.send('room-mgr-save', payload),
   cancel: () => ipcRenderer.send('room-mgr-cancel')
 });
 
@@ -12,10 +12,36 @@ window.addEventListener('DOMContentLoaded', () => {
   const btnAdd = document.getElementById('btn-add');
   const btnSave = document.getElementById('btn-save');
   const btnCancel = document.getElementById('btn-cancel');
+  const feishuWebhook = document.getElementById('feishu-webhook');
+  const feishuAppId = document.getElementById('feishu-app-id');
+  const feishuAppSecret = document.getElementById('feishu-app-secret');
+  const feishuSignSecret = document.getElementById('feishu-sign-secret');
   let rooms = [];
+  let notify = {
+    feishuWebhook: '',
+    feishuAppId: '',
+    feishuAppSecret: '',
+    feishuSignSecret: ''
+  };
 
   function escapeHtml(s) {
     return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function fillNotifyForm() {
+    if (feishuWebhook) feishuWebhook.value = notify.feishuWebhook || '';
+    if (feishuAppId) feishuAppId.value = notify.feishuAppId || '';
+    if (feishuAppSecret) feishuAppSecret.value = notify.feishuAppSecret || '';
+    if (feishuSignSecret) feishuSignSecret.value = notify.feishuSignSecret || '';
+  }
+
+  function readNotifyForm() {
+    return {
+      feishuWebhook: (feishuWebhook && feishuWebhook.value || '').trim(),
+      feishuAppId: (feishuAppId && feishuAppId.value || '').trim(),
+      feishuAppSecret: (feishuAppSecret && feishuAppSecret.value || '').trim(),
+      feishuSignSecret: (feishuSignSecret && feishuSignSecret.value || '').trim()
+    };
   }
 
   function render() {
@@ -152,15 +178,28 @@ window.addEventListener('DOMContentLoaded', () => {
       roomId: r.roomId || '',
       anchors: (r.anchors || []).map(a => ({ name: a.name || '未命名', enabled: a.enabled !== false })),
       liveDuration: r.liveDuration || '15h',
-      userProfileText: r.userProfileText || ''
+      userProfileText: r.userProfileText || '',
+      // 保留已有 dailyUrl，避免管理窗保存时冲掉场次地址
+      ...(r.dailyUrl ? { dailyUrl: r.dailyUrl } : {})
     }));
-    ipcRenderer.send('room-mgr-save', clean);
+    ipcRenderer.send('room-mgr-save', {
+      rooms: clean,
+      notify: readNotifyForm()
+    });
   });
 
   btnCancel.addEventListener('click', () => ipcRenderer.send('room-mgr-cancel'));
 
   ipcRenderer.on('room-mgr-init', (_e, data) => {
-    rooms = data.rooms.map(r => ({ ...r, anchors: (r.anchors || []).map(a => ({ ...a })) }));
+    rooms = (data.rooms || []).map(r => ({ ...r, anchors: (r.anchors || []).map(a => ({ ...a })) }));
+    notify = {
+      feishuWebhook: '',
+      feishuAppId: '',
+      feishuAppSecret: '',
+      feishuSignSecret: '',
+      ...(data.notify || {})
+    };
+    fillNotifyForm();
     render();
   });
 });
