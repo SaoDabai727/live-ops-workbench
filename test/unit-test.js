@@ -71,6 +71,14 @@ test('syncRoomIdFromDailyUrl 写回真实 roomId', () => {
   assert.strictEqual(room.roomId, '7661440878568803091');
 });
 
+test('空 roomId 大屏 → needs-config（禁止 about:blank 黑屏）', () => {
+  const empty = { id: 'live3', roomId: '', dailyUrl: '' };
+  assert.strictEqual(compass.resolveDapingLoadTarget(empty).kind, 'needs-config');
+  assert.strictEqual(compass.shouldPreloadDaping(empty), false);
+  assert.ok(compass.isDapingNeedsConfigUrl(compass.buildDapingNeedsConfigUrl()));
+  assert.ok(compass.isDapingNeedsConfigUrl('about:blank'));
+});
+
 console.log('\n=== reportGenerator ===');
 test('isLoginPageText 检测登录文案', () => {
   assert.strictEqual(report.isLoginPageText('请登录后继续操作'), true);

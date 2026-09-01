@@ -98,6 +98,66 @@ function shouldNavigateDaping(currentUrl, expectedUrl) {
   return true;
 }
 
+const DAPING_NEEDS_CONFIG_MARK = 'daping-needs-config';
+const DAPING_DEFAULT_TEMPLATE =
+  'https://compass.jinritemai.com/screen/live/talent?live_room_id={roomId}';
+
+/**
+ * 解析大屏应加载的目标。
+ * 无有效 dailyUrl / roomId 时返回 needs-config（禁止 about:blank 黑屏）。
+ * @returns {{ kind: 'url', url: string } | { kind: 'needs-config' }}
+ */
+function resolveDapingLoadTarget(room, template) {
+  if (room && room.dailyUrl && isCompassLiveScreenUrl(room.dailyUrl)
+      && !isPlaceholderRoomId(parseLiveRoomId(room.dailyUrl))) {
+    return { kind: 'url', url: room.dailyUrl };
+  }
+  const rid = room ? room.roomId : '';
+  if (!isPlaceholderRoomId(rid)) {
+    const tpl = template || DAPING_DEFAULT_TEMPLATE;
+    return { kind: 'url', url: String(tpl).replace('{roomId}', rid) };
+  }
+  return { kind: 'needs-config' };
+}
+
+/** 未配置 Room ID / dailyUrl 时的内嵌说明页（替代 about:blank） */
+function buildDapingNeedsConfigUrl() {
+  const html =
+    '<!doctype html><meta charset="utf-8">' +
+    '<title>' + DAPING_NEEDS_CONFIG_MARK + '</title>' +
+    '<style>' +
+    'html,body{height:100%;margin:0;background:#161310;color:#E8E0D5;' +
+    'font-family:"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}' +
+    '.wrap{min-height:100%;display:flex;align-items:center;justify-content:center;padding:32px}' +
+    '.box{max-width:420px;line-height:1.55}' +
+    'h1{font-size:18px;font-weight:600;margin:0 0 12px;color:#F5E6D3}' +
+    'p{margin:0 0 10px;font-size:14px;color:#C4B8A8}' +
+    'ol{margin:8px 0 0;padding-left:1.2em;font-size:13px;color:#A89888}' +
+    'li{margin:6px 0}' +
+    'code{font-size:12px;color:#E8A87C}' +
+    '</style><div class="wrap"><div class="box" data-page="' + DAPING_NEEDS_CONFIG_MARK + '">' +
+    '<h1>直播大屏尚未配置</h1>' +
+    '<p>当前直播间没有有效的 Room ID / 本场大屏链接，所以无法打开罗盘大屏。</p>' +
+    '<ol>' +
+    '<li>打开左侧「直播间管理」</li>' +
+    '<li>为该房间填写今日 <code>Room ID</code>（罗盘地址里的 <code>live_room_id</code>）</li>' +
+    '<li>保存后再点「直播大屏」</li>' +
+    '</ol></div></div>';
+  return 'data:text/html;charset=utf-8,' + encodeURIComponent(html);
+}
+
+function isDapingNeedsConfigUrl(url) {
+  if (!url || typeof url !== 'string') return true;
+  if (url === 'about:blank') return true;
+  if (url.startsWith('data:') && url.includes(DAPING_NEEDS_CONFIG_MARK)) return true;
+  return false;
+}
+
+/** 无有效配置时不要后台预加载大屏（否则预加载 about:blank，切过去就是黑屏） */
+function shouldPreloadDaping(room) {
+  return resolveDapingLoadTarget(room).kind === 'url';
+}
+
 module.exports = {
   parseLiveRoomId,
   isPlaceholderRoomId,
@@ -105,5 +165,10 @@ module.exports = {
   looksLikeCompassAccessDeniedPage,
   looksLikeLoginUrl,
   syncRoomIdFromDailyUrl,
-  shouldNavigateDaping
+  shouldNavigateDaping,
+  resolveDapingLoadTarget,
+  buildDapingNeedsConfigUrl,
+  isDapingNeedsConfigUrl,
+  shouldPreloadDaping,
+  DAPING_NEEDS_CONFIG_MARK
 };

@@ -4,7 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
-const { isPlaceholderRoomId, isCompassLiveScreenUrl, parseLiveRoomId, syncRoomIdFromDailyUrl } = require('./compassUrl');
+const { isPlaceholderRoomId, isCompassLiveScreenUrl, parseLiveRoomId, syncRoomIdFromDailyUrl, resolveDapingLoadTarget, buildDapingNeedsConfigUrl } = require('./compassUrl');
 const { setKpiPatterns } = require('./reportGenerator');
 
 // ====== 路径 ======
@@ -304,18 +304,15 @@ function getDefaultUrl(roomId, subPage) {
 
   const room = config.liveRooms.find(r => r.id === roomId);
 
-  // 直播大屏：dailyUrl 优先（配置里 roomId 常为占位 123456/789012，不能用来拼 compass）
-  if (subPage === 'daping' && room && room.dailyUrl && isCompassLiveScreenUrl(room.dailyUrl)
-      && !isPlaceholderRoomId(parseLiveRoomId(room.dailyUrl))) {
-    return room.dailyUrl;
+  // 直播大屏：dailyUrl / 有效 roomId；否则说明页（禁止 about:blank 黑屏）
+  if (subPage === 'daping') {
+    const target = resolveDapingLoadTarget(room, sp && sp.defaultUrlTemplate);
+    if (target.kind === 'needs-config') return buildDapingNeedsConfigUrl();
+    return target.url;
   }
 
   if (sp.defaultUrlTemplate) {
     const rid = room ? room.roomId : roomId;
-    // 占位 roomId 不要拼出错误大屏地址（否则调度器/复位会把已登录页冲掉）
-    if (subPage === 'daping' && isPlaceholderRoomId(rid)) {
-      return 'about:blank';
-    }
     return sp.defaultUrlTemplate.replace('{roomId}', rid);
   }
   return sp.defaultUrl || 'about:blank';

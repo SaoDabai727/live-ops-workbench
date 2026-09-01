@@ -608,6 +608,9 @@ function createWindowManager({ mainWindow }) {
           appState.pages = newPages;
           if (!updatedRooms.find(r => r.id === appState.currentRoomId)) {
             showView(updatedRooms[0]?.id || 'live1', appState.currentSubPage);
+          } else {
+            // 刚补全 Room ID / dailyUrl 时，强制再走一遍 showView，把 needs-config / about:blank 自愈成真实大屏
+            showView(appState.currentRoomId, appState.currentSubPage);
           }
           pushState();
         }

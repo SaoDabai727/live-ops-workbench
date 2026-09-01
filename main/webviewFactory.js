@@ -9,7 +9,9 @@ const { attachExplainAutoClick } = require('./explainManager');
 const {
   looksLikeCompassAccessDeniedPage,
   isPlaceholderRoomId,
-  parseLiveRoomId
+  parseLiveRoomId,
+  isDapingNeedsConfigUrl,
+  shouldPreloadDaping
 } = require('./compassUrl');
 const { shouldReloadPreloaded } = require('./viewSwitch');
 
@@ -251,6 +253,13 @@ function createWebViewFactory({ authManager, onViewEvent } = {}) {
   function preloadView(roomId, subPage) {
     const key = `${roomId}_${subPage}`;
     if (keptAliveViews.has(key) || preloadedViews.has(key)) return; // 已有无需重复
+    if (subPage === 'daping') {
+      const room = config.liveRooms.find(r => r.id === roomId);
+      if (!shouldPreloadDaping(room)) {
+        debugLog.log(`[WF] preloadView SKIP daping needs-config roomId=${roomId}`);
+        return;
+      }
+    }
     const view = createView(roomId, subPage);
     hideView(view);
     preloadedViews.set(key, view);
@@ -298,19 +307,20 @@ function createWebViewFactory({ authManager, onViewEvent } = {}) {
     } else if (keptAliveViews.has(key)) {
       branch = 'KEEPALIVE';
       target = keptAliveViews.get(key).view;
-      // 保活视图保留原有状态与导航历史；若已被冲成无权页则自愈
+      // 保活视图保留原有状态与导航历史；若已被冲成无权页 / 未配置空页则自愈
       try {
         const cur = target.webContents.getURL();
         const recoverTo = (lastUrl && lastUrl !== 'about:blank' && !looksLikeCompassAccessDeniedPage(lastUrl)
-          && !isPlaceholderRoomId(parseLiveRoomId(lastUrl)))
+          && !isPlaceholderRoomId(parseLiveRoomId(lastUrl)) && !isDapingNeedsConfigUrl(lastUrl))
           ? lastUrl
           : getDefaultUrl(roomId, subPage);
         const needRecover = subPage === 'daping' && (
           looksLikeCompassAccessDeniedPage(cur) ||
-          (isPlaceholderRoomId(parseLiveRoomId(cur)) && recoverTo && recoverTo !== 'about:blank') ||
-          (cur === 'about:blank' && recoverTo && recoverTo !== 'about:blank')
+          isDapingNeedsConfigUrl(cur) ||
+          (isPlaceholderRoomId(parseLiveRoomId(cur)) && recoverTo && !isDapingNeedsConfigUrl(recoverTo)) ||
+          (cur === 'about:blank' && recoverTo && !isDapingNeedsConfigUrl(recoverTo))
         );
-        if (needRecover && recoverTo && recoverTo !== 'about:blank') {
+        if (needRecover && recoverTo && recoverTo !== cur) {
           debugLog.log(`[WF] showView KEEPALIVE recover daping from="${String(cur).slice(0, 100)}" to="${String(recoverTo).slice(0, 100)}"`);
           target.webContents.loadURL(recoverTo);
         }
