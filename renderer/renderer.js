@@ -6,6 +6,8 @@
   const sidebarRooms = document.getElementById('sidebar-rooms') || sidebar;
   const tabbar = document.getElementById('tabbar');
   const btnRefresh = document.getElementById('btn-refresh');
+  const btnBack = document.getElementById('btn-back');
+  const btnForward = document.getElementById('btn-forward');
   const btnPause = document.getElementById('btn-pause');
   const btnReset = document.getElementById('btn-reset');
   const btnManage = document.getElementById('btn-manage');
@@ -144,13 +146,18 @@
     if (isReport && state.lastReport && !reportEditor.value) {
       reportEditor.value = state.lastReport;
     }
-    // 工具栏按钮：report 页隐藏刷新/暂停/复位；非巨量百应隐藏讲解面板
+    // 工具栏按钮：report 页隐藏刷新/暂停/复位/后退前进；非巨量百应隐藏讲解面板
     const isReportPage = state.currentSubPage === 'report';
     const isJuliang = state.currentSubPage === 'juliang';
     btnRefresh.style.display = isReportPage ? 'none' : '';
+    if (btnBack) btnBack.style.display = isReportPage ? 'none' : '';
+    if (btnForward) btnForward.style.display = isReportPage ? 'none' : '';
     btnPause.style.display = isReportPage ? 'none' : '';
     btnReset.style.display = isReportPage ? 'none' : '';
     if (btnExplainPanel) btnExplainPanel.style.display = isJuliang ? '' : 'none';
+    const nav = state.nav || {};
+    if (btnBack) btnBack.disabled = isReportPage || !nav.canGoBack;
+    if (btnForward) btnForward.disabled = isReportPage || !nav.canGoForward;
   }
 
 
@@ -334,6 +341,8 @@
     };
   }
   btnRefresh.onclick = () => api.refreshCurrent();
+  if (btnBack) btnBack.onclick = () => api.navBack();
+  if (btnForward) btnForward.onclick = () => api.navForward();
   btnPause.onclick = () => {
     const next = !(btnPause.dataset.paused === '1');
     btnPause.dataset.paused = next ? '1' : '0';

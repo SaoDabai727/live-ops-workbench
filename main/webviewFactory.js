@@ -11,8 +11,10 @@ const {
   isPlaceholderRoomId,
   parseLiveRoomId
 } = require('./compassUrl');
+const { shouldReloadPreloaded } = require('./viewSwitch');
 
 const WEBVIEW_PRELOAD = path.join(__dirname, 'webviewPreload.js');
+const VIEW_BG = '#161310';
 
 // 所有由本 factory 创建的 webContents.id（用于 webRequest 范围过滤）
 const ourWebContentsIds = new Set();
@@ -150,6 +152,13 @@ function createWebViewFactory({ authManager, onViewEvent } = {}) {
       debugLog.log(`[WF] did-navigate-in-page roomId=${roomId} subPage=${subPage} url="${url}"`);
       if (onViewEvent && onViewEvent.onPageLoaded) onViewEvent.onPageLoaded(roomId, subPage, url);
     });
+
+    // 完整导航（含后退/前进）也要刷新 canGoBack 状态
+    view.webContents.on('did-navigate', (event, url) => {
+      if (url === 'about:blank' || url.startsWith('data:')) return;
+      if (!currentView || view.webContents.id !== currentView.webContents.id) return;
+      if (onViewEvent && onViewEvent.onNavStateChange) onViewEvent.onNavStateChange(roomId, subPage);
+    });
   }
 
   function getPooledView(partition) {
@@ -198,6 +207,7 @@ function createWebViewFactory({ authManager, onViewEvent } = {}) {
           sandbox: false
         }
       });
+      try { view.setBackgroundColor(VIEW_BG); } catch (e) {}
     }
     // 仅新建时绑定事件：避免池化复用导致重复监听，且闭包会捕获旧 roomId/subPage
     if (isNew) {
@@ -246,26 +256,49 @@ function createWebViewFactory({ authManager, onViewEvent } = {}) {
     preloadedViews.set(key, view);
   }
 
+  /** 切页前把当前视图收入保活（不在此 hide：仍挂在窗口上时 hide 会造成黑屏闪一下） */
+  function parkCurrentView(nextKey) {
+    if (!currentView || !currentMeta) return;
+    const oldKey = `${currentMeta.roomId}_${currentMeta.subPage}`;
+    if (oldKey === nextKey) return;
+    const existing = keptAliveViews.get(oldKey);
+    if (existing && existing.view !== currentView) {
+      try { hideView(existing.view); } catch (e) {}
+    }
+    keptAliveViews.set(oldKey, { view: currentView, meta: { roomId: currentMeta.roomId, subPage: currentMeta.subPage } });
+  }
+
   function showView(roomId, subPage, { keepAlive = false, lastUrl = '' } = {}) {
     const key = `${roomId}_${subPage}`;
     let target;
     let branch = 'UNKNOWN';
+
+    // 任意分支都先 park 旧页，避免 PRELOADED/KEEPALIVE 路径把当前视图弄成 orphan
+    parkCurrentView(key);
+
     // 优先级：预加载 > 保活 > 新建
     if (preloadedViews.has(key)) {
       branch = 'PRELOADED';
       target = preloadedViews.get(key);
       preloadedViews.delete(key);
-      // 预加载视图加载的是默认 URL；若用户曾导航到其他页面，恢复到上次 URL
-      if (lastUrl && lastUrl !== 'about:blank') {
-        debugLog.log(`[WF] showView PRELOADED, restoring lastUrl="${lastUrl}"`);
-        target.webContents.loadURL(lastUrl);
-      } else {
-        debugLog.log(`[WF] showView PRELOADED, keeping default (lastUrl empty)`);
+      // 仅当预加载 URL 与 lastUrl 不一致时才 load（同 URL 再 load 会清历史并黑屏）
+      try {
+        const cur = target.webContents.getURL();
+        if (shouldReloadPreloaded(lastUrl, cur)) {
+          debugLog.log(`[WF] showView PRELOADED, restoring lastUrl="${lastUrl}" (was "${cur}")`);
+          target.webContents.loadURL(lastUrl);
+        } else {
+          debugLog.log(`[WF] showView PRELOADED, keep current url (no reload)`);
+        }
+      } catch (e) {
+        if (lastUrl && lastUrl !== 'about:blank') {
+          try { target.webContents.loadURL(lastUrl); } catch (e2) {}
+        }
       }
     } else if (keptAliveViews.has(key)) {
       branch = 'KEEPALIVE';
       target = keptAliveViews.get(key).view;
-      // 保活视图保留原有状态，无需额外导航；若已被后台冲成无权页则自愈
+      // 保活视图保留原有状态与导航历史；若已被冲成无权页则自愈
       try {
         const cur = target.webContents.getURL();
         const recoverTo = (lastUrl && lastUrl !== 'about:blank' && !looksLikeCompassAccessDeniedPage(lastUrl)
@@ -284,22 +317,10 @@ function createWebViewFactory({ authManager, onViewEvent } = {}) {
       } catch (e) {}
     } else {
       branch = 'NEW';
-      // V1.10 全页常驻：旧视图不销毁，移入 keepAlive 持久化
-      if (currentView && currentMeta) {
-        const oldKey = `${currentMeta.roomId}_${currentMeta.subPage}`;
-        const existing = keptAliveViews.get(oldKey);
-        // 若槽位已有别的实例（例如旧 scrape/preload 误入），以当前用户视图为准替换
-        if (existing && existing.view !== currentView) {
-          try { hideView(existing.view); } catch (e) {}
-          // 不销毁：可能仍被 scrape 引用；仅让 UI 槽位指向用户视图
-        }
-        hideView(currentView);
-        keptAliveViews.set(oldKey, { view: currentView, meta: { ...currentMeta } });
-      }
       target = createView(roomId, subPage, { lastUrl });
-      // 新视图立刻加入保活
-      keptAliveViews.set(key, { view: target, meta: { roomId, subPage } });
     }
+    // 目标一律登记保活，保证下次切回不重建、历史可后退
+    keptAliveViews.set(key, { view: target, meta: { roomId, subPage } });
     debugLog.log(`[WF] showView branch=${branch} roomId=${roomId} subPage=${subPage} lastUrl="${lastUrl}" keepAlive=${keepAlive}`);
     currentView = target;
     currentMeta = { roomId, subPage, keepAlive };
@@ -359,6 +380,7 @@ function createWebViewFactory({ authManager, onViewEvent } = {}) {
         sandbox: false
       }
     });
+    try { view.setBackgroundColor(VIEW_BG); } catch (e) {}
     // 不 register 到 UI meta / 不 bind 完整 UI 事件，避免 lastUrl 被后台加载污染
     ourWebContentsIds.add(view.webContents.id);
     view.webContents.setWindowOpenHandler(({ url }) => {

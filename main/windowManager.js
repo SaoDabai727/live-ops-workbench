@@ -29,7 +29,8 @@ function createWindowManager({ mainWindow }) {
   const appState = {
     currentRoomId: config.liveRooms[0] ? config.liveRooms[0].id : 'live1',
     currentSubPage: 'juliang',
-    pages: {}
+    pages: {},
+    nav: { canGoBack: false, canGoForward: false }
   };
   config.liveRooms.forEach(r => {
     appState.pages[r.id] = {};
@@ -96,6 +97,7 @@ function createWindowManager({ mainWindow }) {
         // 过滤字节验证页（summon.bytedance.com），不参与持久化
         if (url && url.includes('summon.bytedance.com')) {
           debugLog.log(`[WM] onPageLoaded IGNORED (summon.bytedance): roomId=${roomId} subPage=${subPage}`);
+          syncNavState();
           pushState();
           return;
         }
@@ -103,6 +105,7 @@ function createWindowManager({ mainWindow }) {
         if (subPage === 'daping') {
           if (looksLikeCompassAccessDeniedPage(url) || isPlaceholderRoomId(parseLiveRoomId(url))) {
             debugLog.log(`[WM] onPageLoaded IGNORED (bad daping url): roomId=${roomId} url="${String(url).slice(0, 120)}"`);
+            syncNavState();
             pushState();
             return;
           }
@@ -127,14 +130,33 @@ function createWindowManager({ mainWindow }) {
         debugLog.log(`[WM] onPageLoaded: roomId=${roomId} subPage=${subPage} -> lastUrl="${url}"`);
         appState.pages[roomId][subPage].lastUrl = url;
         persistNavState();
+        syncNavState();
         pushState();
       },
       onLoadingChange: (roomId, subPage, loading) => {
         appState.loading = { roomId, subPage, loading };
+        if (!loading) syncNavState();
+        pushState();
+      },
+      onNavStateChange: () => {
+        syncNavState();
         pushState();
       }
     }
   });
+
+  function syncNavState() {
+    const v = factory.getCurrentView && factory.getCurrentView();
+    let canGoBack = false;
+    let canGoForward = false;
+    try {
+      if (v && !v.webContents.isDestroyed()) {
+        canGoBack = !!v.webContents.canGoBack();
+        canGoForward = !!v.webContents.canGoForward();
+      }
+    } catch (e) {}
+    appState.nav = { canGoBack, canGoForward };
+  }
 
   // 全页常驻（保活视图）
   const keepAliveSet = new Set();
@@ -272,9 +294,11 @@ function createWindowManager({ mainWindow }) {
       const prev = factory.getCurrentView();
       if (prev) {
         try { mainWindow.removeBrowserView(prev); } catch (e) {}
+        try { factory.hideView(prev); } catch (e) {}
       }
       refresh.stop();
       appState.lastReport = loadLastReport(roomId);
+      appState.nav = { canGoBack: false, canGoForward: false };
       pushState();
       return;
     }
@@ -290,15 +314,18 @@ function createWindowManager({ mainWindow }) {
     }
     debugLog.log(`[WM] showView roomId=${roomId} subPage=${subPage} lastUrl="${lastUrl}"`);
     const view = factory.showView(roomId, subPage, { keepAlive: isKeepAlive(roomId, subPage), lastUrl });
-    if (prev && prev !== view) {
-      try { mainWindow.removeBrowserView(prev); } catch (e) {}
-    }
+    // 先挂上新视图再卸旧视图，缩短内容区空窗（黑屏）时间
     view.setBounds(bounds());
     try {
       view.setAutoResize({ width: false, height: false, horizontal: false, vertical: false });
       syncViewZoom(view);
     } catch (e) {}
-    mainWindow.addBrowserView(view);
+    try { mainWindow.addBrowserView(view); } catch (e) {}
+    if (prev && prev !== view) {
+      try { mainWindow.removeBrowserView(prev); } catch (e) {}
+      // 卸下后再藏到屏外，避免仍附着时 setBounds(0) 造成整块黑闪
+      try { factory.hideView(prev); } catch (e) {}
+    }
     // addBrowserView 后再设一次，避免初始尺寸被覆盖
     applyViewBounds();
     // 下一帧再同步，适配 maximize / DPI
@@ -311,6 +338,7 @@ function createWindowManager({ mainWindow }) {
       debugLog.log(`[WM] showView privateMsg: roomId=${roomId} tokenPresent=${!!token}`);
       bg.startPrivateMsgService(roomId, token);
     }
+    syncNavState();
     pushState();
     schedulePreload(roomId, subPage);
   }
@@ -393,6 +421,24 @@ function createWindowManager({ mainWindow }) {
     ipcMain.on('refresh-current', () => {
       const v = factory.getCurrentView();
       if (v) v.webContents.reload();
+    });
+    ipcMain.on('nav-back', () => {
+      const v = factory.getCurrentView();
+      try {
+        if (v && !v.webContents.isDestroyed() && v.webContents.canGoBack()) {
+          v.webContents.goBack();
+        }
+      } catch (e) {}
+      setTimeout(() => { syncNavState(); pushState(); }, 50);
+    });
+    ipcMain.on('nav-forward', () => {
+      const v = factory.getCurrentView();
+      try {
+        if (v && !v.webContents.isDestroyed() && v.webContents.canGoForward()) {
+          v.webContents.goForward();
+        }
+      } catch (e) {}
+      setTimeout(() => { syncNavState(); pushState(); }, 50);
     });
     ipcMain.on('toggle-pause-refresh', (e, paused) => {
       refresh.setPaused(!!paused);

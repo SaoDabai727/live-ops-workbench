@@ -118,6 +118,11 @@ body {
   border-color: var(--border-light);
   color: var(--text);
 }
+#toolbar button:disabled {
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
+}
 #toolbar button.active {
   background: var(--accent-soft);
   border-color: var(--accent);

@@ -136,6 +136,37 @@ test('normalizeKpi 对样本文件可用', () => {
   assert.ok(matched >= 3, 'sample-douyin should match some KPIs, got ' + matched);
 });
 
+console.log('\n=== viewSwitch ===');
+const viewSwitch = require('../main/viewSwitch');
+
+test('PRELOADED buggy 丢保活；fixed 保留', () => {
+  const buggy = { keptAlive: new Set(), preloaded: new Set(['live1_daping']), currentKey: 'live1_juliang' };
+  buggy.keptAlive.add('live1_juliang');
+  const rb = viewSwitch.simulateShowViewBookkeeping(buggy, 'live1', 'daping', 'buggy');
+  const cb = viewSwitch.assertKeepAliveInvariants({
+    keptAliveKeys: buggy.keptAlive, prevKey: rb.prevKey, nextKey: rb.nextKey
+  });
+  assert.strictEqual(cb.ok, false);
+
+  const fixed = { keptAlive: new Set(['live1_juliang']), preloaded: new Set(['live1_daping']), currentKey: 'live1_juliang' };
+  const rf = viewSwitch.simulateShowViewBookkeeping(fixed, 'live1', 'daping', 'fixed');
+  const cf = viewSwitch.assertKeepAliveInvariants({
+    keptAliveKeys: fixed.keptAlive, prevKey: rf.prevKey, nextKey: rf.nextKey
+  });
+  assert.strictEqual(cf.ok, true);
+});
+
+test('shouldReloadPreloaded 同 URL 不重载', () => {
+  assert.strictEqual(
+    viewSwitch.shouldReloadPreloaded('https://a.com/x', 'https://a.com/x'),
+    false
+  );
+  assert.strictEqual(
+    viewSwitch.shouldReloadPreloaded('https://a.com/x', 'https://a.com/y'),
+    true
+  );
+});
+
 console.log('\n=== 结果 ===');
 console.log('通过: ' + passed + '  失败: ' + failed);
 process.exit(failed ? 1 : 0);

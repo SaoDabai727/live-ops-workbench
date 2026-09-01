@@ -12,6 +12,9 @@ const api = {
   reorderSubPages: (order) => ipcRenderer.invoke('reorder-subpages', order),
   // 刷新当前页
   refreshCurrent: () => ipcRenderer.send('refresh-current'),
+  // 页内历史：后退 / 前进（点错链接可回上一步）
+  navBack: () => ipcRenderer.send('nav-back'),
+  navForward: () => ipcRenderer.send('nav-forward'),
   // 暂停/恢复自动刷新（传 true 暂停）
   togglePauseRefresh: (paused) => ipcRenderer.send('toggle-pause-refresh', paused),
   // 复位到默认页
