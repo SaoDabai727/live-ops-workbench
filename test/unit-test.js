@@ -118,12 +118,14 @@ test('normalizeKpi + setKpiPatterns 读取配置正则', () => {
     '美的燃热官方直播间',
     '直播间成交金额 ¥ 12,345',
     '退款金额 ¥ 100',
+    '千川消耗 ¥ 2,500',
     '曝光次数 9,999',
     '累计观看人数 1.2万',
     '人均观看时长 1分30秒',
     '曝光—观看率 4.5%',
     '观看—互动率 2.1%',
-    '商品点击—成交率 6.8%',
+    '商品点击—成交率(人数) 6.8%',
+    '商品点击—成交率(次数) 3.2%',
     '观看—关注率 0.9%'
   ].join('\n');
 
@@ -131,8 +133,10 @@ test('normalizeKpi + setKpiPatterns 读取配置正则', () => {
   assert.ok(kpi['GMV'], 'GMV should match');
   assert.ok(kpi['退款金额'], 'refund should match');
   assert.ok(kpi['累计观看人数'], 'viewers should match');
+  assert.strictEqual(kpi['商品点击率'], '6.8%', 'should prefer 人数 over 次数');
+  assert.strictEqual(kpi['千川消耗'], '2500', 'qianchuan cost should match');
   const { matched, total } = report.countMatchedKpis(kpi);
-  assert.ok(matched >= 6, 'expected >=6 matched, got ' + matched + '/' + total);
+  assert.ok(matched >= 7, 'expected >=7 matched, got ' + matched + '/' + total);
 });
 
 test('normalizeKpi 对样本文件可用', () => {

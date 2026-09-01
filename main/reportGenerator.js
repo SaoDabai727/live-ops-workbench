@@ -55,12 +55,18 @@ const DEFAULT_SCRAPE_REGEX = {
     '观看互动率[^\\d%]*([\\d.]+%)'
   ],
   product_click_rate: [
+    '商品点击[—\\-]成交率\\s*[\\(（]\\s*人数\\s*[\\)）][^\\d%]*([\\d.]+%)',
+    '商品点击成交率\\s*[\\(（]\\s*人数\\s*[\\)）][^\\d%]*([\\d.]+%)',
     '商品点击[—\\-]成交率[^\\d%]*([\\d.]+%)',
     '商品点击成交率[^\\d%]*([\\d.]+%)'
   ],
   follow_rate: [
     '观看[—\\-]关注率[^\\d%]*([\\d.]+%)',
     '观看关注率[^\\d%]*([\\d.]+%)'
+  ],
+  qianchuan_cost: [
+    '千川消耗\\s*[¥￥]?\\s*([\\d,]+\\.?\\d*\\s*[万亿]?)',
+    '广告消耗\\s*[¥￥]?\\s*([\\d,]+\\.?\\d*\\s*[万亿]?)'
   ],
   room_name: ['([\\u4e00-\\u9fa5]{2,30}(?:官方|旗舰)?直播间)']
 };
@@ -126,6 +132,8 @@ function extractKpis(flatText) {
   if (productClickRate) results.productClickRate = productClickRate;
   const followRate = matchFirst(flatText, 'follow_rate');
   if (followRate) results.followRate = followRate;
+  const qianchuanCost = matchFirst(flatText, 'qianchuan_cost');
+  if (qianchuanCost) results.qianchuanCost = qianchuanCost;
   const roomName = matchFirst(flatText, 'room_name');
   if (roomName) results.roomName = roomName;
   return results;
@@ -134,7 +142,7 @@ function extractKpis(flatText) {
 // ---------- KPI 标准化 ----------
 function emptyKpi() {
   return {
-    '直播间名称': null, 'GMV': null, '退款金额': null, 'GSV': null,
+    '直播间名称': null, 'GMV': null, '退款金额': null, 'GSV': null, '千川消耗': null,
     '总曝光次数': null, '累计观看人数': null, '人均观看时长': null,
     '曝光观看率': null, '观看互动率': null, '商品点击率': null, '观看关注率': null
   };
@@ -165,6 +173,7 @@ function normalizeKpi(raw) {
     'GMV': gmv,
     '退款金额': refund,
     'GSV': gsv,
+    '千川消耗': cleanCurrency(matched.qianchuanCost),
     '总曝光次数': matched.exposureTotal || null,
     '累计观看人数': matched.cumulativeViewers || null,
     '人均观看时长': matched.avgWatchDuration || null,
@@ -208,6 +217,7 @@ function formatReport({ roomCfg = {}, kpi = {}, userProfile = '', liveDuration =
     'GMV：' + val(kpi['GMV']),
     '退款金额：' + val(kpi['退款金额']),
     'GSV：' + val(kpi['GSV']),
+    '千川消耗：' + val(kpi['千川消耗']),
     '总曝光次数：' + val(kpi['总曝光次数']),
     '累计观看人数：' + val(kpi['累计观看人数']),
     '人均观看时长：' + val(kpi['人均观看时长']),

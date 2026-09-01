@@ -52,7 +52,7 @@ function main() {
     else failCount++;
     console.log('  ' + status + ' ' + key + ': ' + (value || '<未获取>'));
   }
-  console.log('\n匹配: ' + matchCount + '/11  缺失: ' + failCount + '/11');
+  console.log('\n匹配: ' + matchCount + '/' + (matchCount + failCount) + '  缺失: ' + failCount + '/' + (matchCount + failCount));
 
   // 3. 用户画像提取
   const profileRaw = pageText;

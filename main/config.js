@@ -79,7 +79,33 @@ function syncKpiPatternsFromBundle(srcDir, userDir) {
     const needsUpgrade = !user.version || typeof userGmv === 'string' || !Array.isArray(userGmv);
     if (needsUpgrade) {
       saveJson(destPath, bundled);
+      return;
     }
+    // 版本升级：合并新增 scrape 键，并刷新本次 intentionally 变更的正则
+    let changed = false;
+    if (!user.scrape_regex) {
+      user.scrape_regex = {};
+      changed = true;
+    }
+    const bundledScrape = bundled.scrape_regex || {};
+    Object.keys(bundledScrape).forEach((key) => {
+      if (!user.scrape_regex[key]) {
+        user.scrape_regex[key] = bundledScrape[key];
+        changed = true;
+      }
+    });
+    if (bundled.version && user.version !== bundled.version) {
+      ['product_click_rate', 'qianchuan_cost'].forEach((key) => {
+        if (bundledScrape[key]) {
+          user.scrape_regex[key] = bundledScrape[key];
+          changed = true;
+        }
+      });
+      user.version = bundled.version;
+      if (bundled.comment) user.comment = bundled.comment;
+      changed = true;
+    }
+    if (changed) saveJson(destPath, user);
   } catch (e) {}
 }
 
