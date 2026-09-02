@@ -185,6 +185,27 @@ body {
   gap: 10px;
 }
 .notify-grid .field.full { grid-column: 1 / -1; }
+.notify-actions {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.btn-test-feishu {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-test-feishu:hover { border-color: var(--accent); color: var(--accent-bright); }
+.btn-test-feishu:disabled { opacity: 0.5; cursor: not-allowed; }
+.feishu-test-status { font-size: 11px; color: var(--muted); line-height: 1.4; }
+.feishu-test-status.ok { color: var(--ok); }
+.feishu-test-status.err { color: var(--danger); }
 </style>
 </head>
 <body>
@@ -195,7 +216,7 @@ body {
 <div id="room-list" class="room-list"></div>
 <div class="notify-card" id="notify-card">
   <div class="section-label">飞书推送（共用）</div>
-  <div class="section-hint">Webhook 可发文本；发大屏截图还需开放平台 App ID / Secret（开通上传图片权限）。签名校验密钥可选。</div>
+  <div class="section-hint">Webhook 发文本；截图需开放平台 App（开通上传图片权限并发布）。凭证页：open.feishu.cn/app</div>
   <div class="notify-grid">
     <div class="field full">
       <span class="field-label">Webhook</span>
@@ -213,6 +234,10 @@ body {
       <span class="field-label">签名校验密钥（可选）</span>
       <input id="feishu-sign-secret" type="password" placeholder="机器人安全设置里的签名密钥" />
     </div>
+  </div>
+  <div class="notify-actions">
+    <button type="button" id="btn-test-feishu" class="btn-test-feishu">测试推送文本</button>
+    <span id="feishu-test-status" class="feishu-test-status"></span>
   </div>
 </div>
 <div class="footer">

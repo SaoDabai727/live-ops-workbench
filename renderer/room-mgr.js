@@ -4,7 +4,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('roomMgrApi', {
   init: (cb) => ipcRenderer.on('room-mgr-init', (_e, data) => cb(data)),
   save: (payload) => ipcRenderer.send('room-mgr-save', payload),
-  cancel: () => ipcRenderer.send('room-mgr-cancel')
+  cancel: () => ipcRenderer.send('room-mgr-cancel'),
+  testFeishu: (notify) => ipcRenderer.invoke('test-feishu-notify', notify)
 });
 
 window.addEventListener('DOMContentLoaded', () => {
@@ -16,6 +17,8 @@ window.addEventListener('DOMContentLoaded', () => {
   const feishuAppId = document.getElementById('feishu-app-id');
   const feishuAppSecret = document.getElementById('feishu-app-secret');
   const feishuSignSecret = document.getElementById('feishu-sign-secret');
+  const btnTestFeishu = document.getElementById('btn-test-feishu');
+  const feishuTestStatus = document.getElementById('feishu-test-status');
   let rooms = [];
   let notify = {
     feishuWebhook: '',
@@ -189,6 +192,42 @@ window.addEventListener('DOMContentLoaded', () => {
   });
 
   btnCancel.addEventListener('click', () => ipcRenderer.send('room-mgr-cancel'));
+
+  if (btnTestFeishu) {
+    btnTestFeishu.addEventListener('click', async () => {
+      const current = readNotifyForm();
+      if (!current.feishuWebhook) {
+        if (feishuTestStatus) {
+          feishuTestStatus.textContent = '请先填写 Webhook';
+          feishuTestStatus.className = 'feishu-test-status err';
+        }
+        return;
+      }
+      btnTestFeishu.disabled = true;
+      if (feishuTestStatus) {
+        feishuTestStatus.textContent = '发送中…';
+        feishuTestStatus.className = 'feishu-test-status';
+      }
+      try {
+        const res = await ipcRenderer.invoke('test-feishu-notify', current);
+        if (feishuTestStatus) {
+          if (res && res.ok) {
+            feishuTestStatus.textContent = res.message || '已发送';
+            feishuTestStatus.className = 'feishu-test-status ok';
+          } else {
+            feishuTestStatus.textContent = (res && res.error) || '发送失败';
+            feishuTestStatus.className = 'feishu-test-status err';
+          }
+        }
+      } catch (e) {
+        if (feishuTestStatus) {
+          feishuTestStatus.textContent = e.message || '发送异常';
+          feishuTestStatus.className = 'feishu-test-status err';
+        }
+      }
+      btnTestFeishu.disabled = false;
+    });
+  }
 
   ipcRenderer.on('room-mgr-init', (_e, data) => {
     rooms = (data.rooms || []).map(r => ({ ...r, anchors: (r.anchors || []).map(a => ({ ...a })) }));

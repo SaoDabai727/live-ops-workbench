@@ -667,6 +667,22 @@ function createWindowManager({ mainWindow }) {
       }
     });
 
+    // 直播间管理：测试飞书文本推送（不截图）
+    ipcMain.handle('test-feishu-notify', async (event, partialNotify) => {
+      try {
+        const notify = { ...loadNotify(), ...(partialNotify || {}) };
+        const { sendText } = require('./feishuNotify');
+        await sendText({
+          webhook: notify.feishuWebhook,
+          signSecret: notify.feishuSignSecret,
+          text: '【直播运营助手】飞书推送测试 ' + new Date().toLocaleString('zh-CN')
+        });
+        return { ok: true, message: '测试消息已发送，请到飞书群查看' };
+      } catch (e) {
+        return { ok: false, error: e.message || String(e) };
+      }
+    });
+
     // 打开直播间管理对话框
     ipcMain.on('open-room-manager', () => {
       const roomData = loadRooms();

@@ -417,14 +417,39 @@ function saveNotify(partial) {
   return loadNotify();
 }
 
-/** 打包升级：用户目录缺 notify.json 时从内置复制；已有则不覆盖用户改动 */
+/** 打包升级：缺文件则复制；已有时仅补空 Webhook，不覆盖用户已填凭证 */
 function syncNotifyFromBundle(srcDir, userDir) {
   const srcPath = path.join(srcDir, 'notify.json');
   const destPath = path.join(userDir, 'notify.json');
   if (!fs.existsSync(srcPath)) return;
-  if (!fs.existsSync(destPath)) {
-    try { fs.copyFileSync(srcPath, destPath); } catch (e) {}
-  }
+  try {
+    const bundled = loadJson(srcPath) || {};
+    if (!fs.existsSync(destPath)) {
+      saveJson(destPath, { ...NOTIFY_DEFAULTS, ...bundled });
+      return;
+    }
+    const user = loadJson(destPath) || {};
+    let changed = false;
+    const next = { ...NOTIFY_DEFAULTS, ...user };
+    if (!String(next.feishuWebhook || '').trim() && String(bundled.feishuWebhook || '').trim()) {
+      next.feishuWebhook = String(bundled.feishuWebhook).trim();
+      changed = true;
+    }
+    ['feishuAppId', 'feishuAppSecret', 'feishuSignSecret', 'feishuWebhook'].forEach((k) => {
+      if (next[k] === undefined) {
+        next[k] = '';
+        changed = true;
+      }
+    });
+    if (changed) {
+      saveJson(destPath, {
+        feishuWebhook: String(next.feishuWebhook || ''),
+        feishuAppId: String(next.feishuAppId || ''),
+        feishuAppSecret: String(next.feishuAppSecret || ''),
+        feishuSignSecret: String(next.feishuSignSecret || '')
+      });
+    }
+  } catch (e) {}
 }
 
 // ------ 日报保存 ------

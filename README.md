@@ -46,6 +46,7 @@ npm start
 | `subPages.json` | 子页定义、布局、URL 白名单 |
 | `kpiPatterns.json` | KPI / 画像正则（**会被真正加载**，改完重启生效） |
 | `updater.json` | 更新源 / 镜像 |
+| `notify.json` | 飞书推送（Webhook / App ID / Secret / 签名密钥） |
 
 大屏地址优先用房间的 `dailyUrl`；若其中的 `live_room_id` 有效，会自动写回 `roomId`。
 
@@ -53,7 +54,20 @@ npm start
 
 1. 先打开该房间「直播大屏」并完成登录  
 2. 切到「直播日报」点「生成日报」  
-3. 若字段大量 `<未获取>`：用 DevTools 拷贝 `document.body.innerText` 到 `test/` 样本，跑 `npm run test-regex` 校准 `config/kpiPatterns.json`
+3. 核对/编辑文本后点「确定日报」：保存历史 → 截图直播大屏 → 推送到飞书群  
+4. 若字段大量 `<未获取>`：用 DevTools 拷贝 `document.body.innerText` 到 `test/` 样本，跑 `npm run test-regex` 校准 `config/kpiPatterns.json`
+
+### 飞书推送
+
+在「直播间管理」底部配置（也可直接改 `notify.json`）：
+
+| 字段 | 是否必需 | 说明 |
+|------|----------|------|
+| Webhook | 发文本必需 | 群自定义机器人地址 |
+| App ID / App Secret | 发截图必需 | [开放平台](https://open.feishu.cn/app) 自建应用，开通 `im:resource` 上传图片权限并发布 |
+| 签名校验密钥 | 可选 | 仅机器人开启了「签名校验」时填写 |
+
+仅配 Webhook 即可推送日报文本；截图需先上传拿 `image_key`，再经同一 Webhook 发图。
 
 ## 安全基线
 
