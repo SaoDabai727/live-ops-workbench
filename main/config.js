@@ -276,9 +276,9 @@ const config = {
   layout: subCfg.layout || { sidebarWidth: 148, toolbarHeight: 46, tabBarHeight: 40 },
   urlWhitelist: subCfg.urlWhitelist || [],
   authCallbackSchemes: subCfg.authCallbackSchemes || ['myapp://callback'],
-  keepAliveMax: Number.isFinite(subCfg.keepAliveMax) ? subCfg.keepAliveMax : 3,
+  keepAliveMax: Number.isFinite(subCfg.keepAliveMax) ? subCfg.keepAliveMax : 6,
   viewPoolSize: Number.isFinite(subCfg.viewPoolSize) ? subCfg.viewPoolSize : 0,
-  preloadDelayMs: Number.isFinite(subCfg.preloadDelayMs) ? subCfg.preloadDelayMs : 0,
+  preloadDelayMs: Number.isFinite(subCfg.preloadDelayMs) ? subCfg.preloadDelayMs : 2000,
   tokenExchangeEndpoint: subCfg.tokenExchangeEndpoint || '',
   kpiPatterns: kpiCfg || {}
 };

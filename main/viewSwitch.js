@@ -74,15 +74,30 @@ function simulateShowViewBookkeeping(state, roomId, subPage, mode) {
   return { branch, prevKey, nextKey: key };
 }
 
+function parsePageKey(key) {
+  const s = String(key || '');
+  const i = s.lastIndexOf('_');
+  if (i <= 0) return { roomId: s, subPage: '' };
+  return { roomId: s.slice(0, i), subPage: s.slice(i + 1) };
+}
+
+const RARE_SUBPAGES = new Set(['report', 'privateMsg', 'doc', 'baojia']);
+
+/** 切房间（同子页）优先于切走其它房间的旧子页 */
+function keepAlivePriority(key, currentKey) {
+  if (!key) return 0;
+  if (key === currentKey) return 100;
+  const cur = parsePageKey(currentKey);
+  const k = parsePageKey(key);
+  if (k.subPage && k.subPage === cur.subPage) return 80;
+  if (k.roomId && k.roomId === cur.roomId) {
+    return RARE_SUBPAGES.has(k.subPage) ? 40 : 65;
+  }
+  return 15;
+}
+
 /**
- * LRU 保活淘汰：始终保留 current + pinned，再从最近使用的 key 补齐到 max。
- * max 含当前页。pinned + current 超过 max 时仍不淘汰 pinned。
- * @param {object} opts
- * @param {string[]} opts.lruOldestFirst
- * @param {string|null} opts.currentKey
- * @param {Iterable<string>} [opts.pinnedKeys]
- * @param {number} opts.max
- * @returns {{ keepKeys: string[], evictKeys: string[] }}
+ * 保活淘汰：current + pinned 必留；其余按「同子页其它房间 > 当前房间其它子页 > LRU」补齐到 max。
  */
 function pickKeepAliveEvictions({ lruOldestFirst, currentKey, pinnedKeys, max }) {
   const order = Array.isArray(lruOldestFirst) ? lruOldestFirst.filter(Boolean) : [];
@@ -94,9 +109,17 @@ function pickKeepAliveEvictions({ lruOldestFirst, currentKey, pinnedKeys, max })
       if (k) keep.add(k);
     }
   }
-  for (let i = order.length - 1; i >= 0; i--) {
+  const newestIndex = new Map();
+  order.forEach((k, i) => newestIndex.set(k, i));
+  const candidates = order.filter((k) => !keep.has(k));
+  candidates.sort((a, b) => {
+    const pd = keepAlivePriority(b, currentKey) - keepAlivePriority(a, currentKey);
+    if (pd !== 0) return pd;
+    return (newestIndex.get(b) || 0) - (newestIndex.get(a) || 0);
+  });
+  for (const k of candidates) {
     if (keep.size >= cap) break;
-    keep.add(order[i]);
+    keep.add(k);
   }
   const evictKeys = order.filter((k) => !keep.has(k));
   return { keepKeys: [...keep], evictKeys };
@@ -124,6 +147,8 @@ module.exports = {
   assertKeepAliveInvariants,
   simulateShowViewBookkeeping,
   pickKeepAliveEvictions,
+  parsePageKey,
+  keepAlivePriority,
   shouldReloadPreloaded,
   normalizeUrlForCompare
 };

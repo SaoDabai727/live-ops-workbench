@@ -348,7 +348,7 @@ function createWindowManager({ mainWindow }) {
     schedulePreload(roomId, subPage);
   }
 
-  // —— 后台预加载：默认关闭（会多占一整页 Chromium）；preloadDelayMs>0 时才启用 ——
+  // —— 后台预加载：停留约 2 秒后预热下一房间的同子页，切房时少等加载 ——
   let preloadTimer = null;
   function schedulePreload(roomId, subPage) {
     if (preloadTimer) { clearTimeout(preloadTimer); preloadTimer = null; }

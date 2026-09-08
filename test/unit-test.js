@@ -192,6 +192,19 @@ test('pickKeepAliveEvictions 保留当前页并淘汰最旧', () => {
   assert.deepStrictEqual(r.evictKeys, ['live1_juliang']);
 });
 
+test('pickKeepAliveEvictions 优先保住同子页其它房间（切房要快）', () => {
+  const r = viewSwitch.pickKeepAliveEvictions({
+    lruOldestFirst: ['live1_juliang', 'live2_daping', 'live2_juliang', 'live3_juliang'],
+    currentKey: 'live3_juliang',
+    pinnedKeys: [],
+    max: 3
+  });
+  assert.ok(r.keepKeys.includes('live3_juliang'));
+  assert.ok(r.keepKeys.includes('live2_juliang'));
+  assert.ok(r.keepKeys.includes('live1_juliang'), 'must keep other rooms on same tab, got ' + r.keepKeys.join(','));
+  assert.deepStrictEqual(r.evictKeys, ['live2_daping']);
+});
+
 test('pickKeepAliveEvictions 不淘汰 pinned', () => {
   const r = viewSwitch.pickKeepAliveEvictions({
     lruOldestFirst: ['pinned_old', 'a', 'b', 'current'],

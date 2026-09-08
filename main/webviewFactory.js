@@ -49,8 +49,11 @@ function createWebViewFactory({ authManager, onViewEvent } = {}) {
   }
 
   function keepAliveCap() {
+    const rooms = Math.max(1, (config.liveRooms || []).length);
+    const auto = Math.min(8, rooms + 2);
     const n = Number(config.keepAliveMax);
-    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 3;
+    const configured = Number.isFinite(n) && n > 0 ? Math.floor(n) : 6;
+    return Math.max(configured, auto);
   }
 
   function touchLru(key) {
@@ -318,11 +321,9 @@ function createWebViewFactory({ authManager, onViewEvent } = {}) {
       dropLru(key);
       destroyView(entry.view);
     });
-    // 预加载只保留 1 个，且不得挤占保活额度
+    // 预加载只保留 1 个（下一房间同子页），即使保活已满也留下，避免切房再等整页加载
     const preloadList = [...preloadedViews.entries()];
-    if (keptAliveViews.size >= keepAliveCap()) {
-      preloadList.forEach(([, v]) => destroyView(v));
-    } else if (preloadList.length > 1) {
+    if (preloadList.length > 1) {
       preloadList.slice(0, -1).forEach(([, v]) => destroyView(v));
     }
     const scrapeList = [...scrapeViews.values()];
@@ -392,10 +393,6 @@ function createWebViewFactory({ authManager, onViewEvent } = {}) {
   function preloadView(roomId, subPage) {
     const key = pageKey(roomId, subPage);
     if (keptAliveViews.has(key) || preloadedViews.has(key)) return; // 已有无需重复
-    if (keptAliveViews.size >= keepAliveCap()) {
-      debugLog.log(`[WF] preloadView SKIP over cap roomId=${roomId} subPage=${subPage}`);
-      return;
-    }
     if (subPage === 'daping') {
       const room = config.liveRooms.find(r => r.id === roomId);
       if (!shouldPreloadDaping(room)) {

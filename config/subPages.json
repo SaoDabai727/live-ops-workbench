@@ -62,8 +62,8 @@
     "myapp://callback",
     "http://127.0.0.1:0/callback"
   ],
-  "keepAliveMax": 3,
+  "keepAliveMax": 6,
   "viewPoolSize": 0,
-  "preloadDelayMs": 0,
+  "preloadDelayMs": 2000,
   "tokenExchangeEndpoint": "https://buyin.jinritemai.com/oauth/token"
 }
