@@ -9,6 +9,12 @@ const { createUpdater } = require('./updater');
 // 必须在 app.ready 之前注册，才能接管 bytedance:// 等协议
 registerPrivilegedSchemes();
 
+// 限制 Chromium 磁盘缓存；关掉备用渲染进程，避免空闲时多占一块内存
+try {
+  app.commandLine.appendSwitch('disk-cache-size', String(64 * 1024 * 1024));
+  app.commandLine.appendSwitch('disable-features', 'SpareRendererForSitePerProcess');
+} catch (e) {}
+
 // 单实例锁：已有实例时退出本次启动，并把原窗口拉到前台
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
@@ -55,7 +61,8 @@ function createMainWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       // 壳窗口启用 sandbox；BrowserView 因分区会话/注入脚本仍保持 sandbox:false（见 docs/adr）
-      sandbox: true
+      sandbox: true,
+      spellcheck: false
     }
   });
   mainWindow.once('ready-to-show', () => {

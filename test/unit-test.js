@@ -179,6 +179,32 @@ test('shouldReloadPreloaded 同 URL 不重载', () => {
   );
 });
 
+test('pickKeepAliveEvictions 保留当前页并淘汰最旧', () => {
+  const r = viewSwitch.pickKeepAliveEvictions({
+    lruOldestFirst: ['live1_juliang', 'live2_juliang', 'live3_juliang', 'live3_daping'],
+    currentKey: 'live3_daping',
+    pinnedKeys: [],
+    max: 3
+  });
+  assert.ok(r.keepKeys.includes('live3_daping'));
+  assert.ok(r.keepKeys.includes('live3_juliang'));
+  assert.ok(r.keepKeys.includes('live2_juliang'));
+  assert.deepStrictEqual(r.evictKeys, ['live1_juliang']);
+});
+
+test('pickKeepAliveEvictions 不淘汰 pinned', () => {
+  const r = viewSwitch.pickKeepAliveEvictions({
+    lruOldestFirst: ['pinned_old', 'a', 'b', 'current'],
+    currentKey: 'current',
+    pinnedKeys: ['pinned_old'],
+    max: 2
+  });
+  assert.ok(r.keepKeys.includes('current'));
+  assert.ok(r.keepKeys.includes('pinned_old'));
+  assert.ok(r.evictKeys.includes('a'));
+  assert.ok(r.evictKeys.includes('b'));
+});
+
 console.log('\n=== feishuNotify ===');
 const feishu = require('../main/feishuNotify');
 
@@ -193,6 +219,22 @@ test('buildSignHeaders 生成 timestamp + sign', () => {
   assert.ok(h.sign);
   assert.strictEqual(typeof h.sign, 'string');
   assert.ok(h.sign.length > 10);
+});
+
+test('formatImageUploadError 映射未开机器人能力', () => {
+  const msg = feishu.formatImageUploadError({
+    code: 234007,
+    msg: 'App does not enable bot feature. Refer to the documentation to fix the error: https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-enable-bot-ability'
+  });
+  assert.ok(msg.includes('机器人'), msg);
+  assert.ok(msg.includes('发布'), msg);
+  assert.ok(!/Refer to the documentation/i.test(msg), msg);
+});
+
+test('formatImageUploadError 其它错误保留原文', () => {
+  const msg = feishu.formatImageUploadError({ code: 234011, msg: "Can't regonnize the image format." });
+  assert.ok(msg.startsWith('上传截图失败：'), msg);
+  assert.ok(msg.includes('image format'), msg);
 });
 
 console.log('\n=== 结果 ===');

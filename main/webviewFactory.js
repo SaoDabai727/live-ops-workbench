@@ -13,7 +13,7 @@ const {
   isDapingNeedsConfigUrl,
   shouldPreloadDaping
 } = require('./compassUrl');
-const { shouldReloadPreloaded } = require('./viewSwitch');
+const { shouldReloadPreloaded, pickKeepAliveEvictions } = require('./viewSwitch');
 
 const WEBVIEW_PRELOAD = path.join(__dirname, 'webviewPreload.js');
 const VIEW_BG = '#161310';
@@ -28,10 +28,46 @@ function createWebViewFactory({ authManager, onViewEvent } = {}) {
   const preloadedViews = new Map();  // `${roomId}_${subPage}` -> BrowserView (后台预加载)
   const scrapeViews = new Map();     // `${roomId}_${subPage}` -> 专用抓取视图（不进 UI 保活）
   const viewRegistry = new Map();    // webContents.id -> { roomId, subPage, partition }
+  const pinnedKeys = new Set();      // 用户钉住的保活，不参与 LRU 淘汰
+  const lruOldestFirst = [];         // 最近使用的 key 在末尾
   let currentView = null;
   let currentMeta = null;
 
   const partitionName = (roomId, subPage) => `persist:${roomId}_${subPage}`;
+  const pageKey = (roomId, subPage) => `${roomId}_${subPage}`;
+
+  function viewPrefs(partition) {
+    return {
+      partition,
+      preload: WEBVIEW_PRELOAD,
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+      spellcheck: false,
+      backgroundThrottling: true
+    };
+  }
+
+  function keepAliveCap() {
+    const n = Number(config.keepAliveMax);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 3;
+  }
+
+  function touchLru(key) {
+    if (!key) return;
+    const i = lruOldestFirst.indexOf(key);
+    if (i >= 0) lruOldestFirst.splice(i, 1);
+    lruOldestFirst.push(key);
+  }
+
+  function dropLru(key) {
+    const i = lruOldestFirst.indexOf(key);
+    if (i >= 0) lruOldestFirst.splice(i, 1);
+  }
+
+  function currentKeyOf() {
+    return currentMeta ? pageKey(currentMeta.roomId, currentMeta.subPage) : null;
+  }
 
   function registerViewMeta(view, roomId, subPage) {
     const partition = partitionName(roomId, subPage);
@@ -172,10 +208,15 @@ function createWebViewFactory({ authManager, onViewEvent } = {}) {
   }
 
   function recycleView(view, roomId, subPage) {
+    const poolMax = Number(config.viewPoolSize) || 0;
+    if (poolMax <= 0) {
+      destroyView(view);
+      return;
+    }
     const partition = partitionName(roomId, subPage);
     const list = viewPool.get(partition) || [];
-    if (list.length < config.viewPoolSize) {
-      hideView(view);  // 隐到屏幕外即可，不加载 about:blank（避免覆盖 lastUrl）
+    if (list.length < poolMax) {
+      hideView(view);
       list.push(view);
       viewPool.set(partition, list);
     } else {
@@ -183,14 +224,112 @@ function createWebViewFactory({ authManager, onViewEvent } = {}) {
     }
   }
 
+  function forgetView(view) {
+    if (!view) return;
+    let wcId = null;
+    try { wcId = view.webContents.id; } catch (e) {}
+    if (wcId != null) {
+      viewRegistry.delete(wcId);
+      ourWebContentsIds.delete(wcId);
+    }
+    for (const [part, list] of viewPool) {
+      const next = (list || []).filter((v) => v !== view);
+      if (next.length) viewPool.set(part, next);
+      else viewPool.delete(part);
+    }
+    for (const [key, entry] of keptAliveViews) {
+      if (entry && entry.view === view) {
+        keptAliveViews.delete(key);
+        dropLru(key);
+      }
+    }
+    for (const [key, v] of preloadedViews) {
+      if (v === view) preloadedViews.delete(key);
+    }
+    for (const [key, v] of scrapeViews) {
+      if (v === view) scrapeViews.delete(key);
+    }
+    if (currentView === view) {
+      currentView = null;
+      currentMeta = null;
+    }
+  }
+
   function destroyView(view) {
-    try { viewRegistry.delete(view.webContents.id); } catch (e) {}
-    try { ourWebContentsIds.delete(view.webContents.id); } catch (e) {}
+    if (!view) return;
+    forgetView(view);
+    try { view.webContents.close({ waitForBeforeUnload: false }); } catch (e) {}
     try { view.webContents.destroy(); } catch (e) {}
   }
 
   function hideView(view) {
     try { view.setBounds({ x: -10000, y: -10000, width: 0, height: 0 }); } catch (e) {}
+    try { view.webContents.setBackgroundThrottling(true); } catch (e) {}
+    try { view.webContents.setAudioMuted(true); } catch (e) {}
+  }
+
+  function prepareVisibleView(view) {
+    try { view.webContents.setBackgroundThrottling(false); } catch (e) {}
+    try { view.webContents.setAudioMuted(false); } catch (e) {}
+  }
+
+  function findView(roomId, subPage) {
+    const key = pageKey(roomId, subPage);
+    if (currentMeta && currentMeta.roomId === roomId && currentMeta.subPage === subPage && currentView) {
+      if (!currentView.webContents.isDestroyed()) return currentView;
+    }
+    const kept = keptAliveViews.get(key);
+    if (kept && kept.view && !kept.view.webContents.isDestroyed()) return kept.view;
+    const pre = preloadedViews.get(key);
+    if (pre && !pre.webContents.isDestroyed()) return pre;
+    return null;
+  }
+
+  function releaseEphemeralView(view) {
+    if (!view) return;
+    if (currentView === view) return;
+    const kept = [...keptAliveViews.values()].some((e) => e && e.view === view);
+    if (kept) return;
+    destroyView(view);
+  }
+
+  function trimIdleViews() {
+    const currentKey = currentKeyOf();
+    const { evictKeys } = pickKeepAliveEvictions({
+      lruOldestFirst: (() => {
+        const order = [];
+        lruOldestFirst.forEach((k) => {
+          if (keptAliveViews.has(k) && !order.includes(k)) order.push(k);
+        });
+        keptAliveViews.forEach((_, k) => {
+          if (!order.includes(k)) order.push(k);
+        });
+        return order;
+      })(),
+      currentKey,
+      pinnedKeys,
+      max: keepAliveCap()
+    });
+    evictKeys.forEach((key) => {
+      const entry = keptAliveViews.get(key);
+      if (!entry || !entry.view) return;
+      if (currentView && entry.view === currentView) return;
+      keptAliveViews.delete(key);
+      dropLru(key);
+      destroyView(entry.view);
+    });
+    // 预加载只保留 1 个，且不得挤占保活额度
+    const preloadList = [...preloadedViews.entries()];
+    if (keptAliveViews.size >= keepAliveCap()) {
+      preloadList.forEach(([, v]) => destroyView(v));
+    } else if (preloadList.length > 1) {
+      preloadList.slice(0, -1).forEach(([, v]) => destroyView(v));
+    }
+    const scrapeList = [...scrapeViews.values()];
+    scrapeList.forEach((v) => {
+      if (v && v !== currentView) destroyView(v);
+    });
+    debugLog.log(`[WF] trimIdleViews keep=${keptAliveViews.size} cap=${keepAliveCap()} preload=${preloadedViews.size}`);
   }
 
   function createView(roomId, subPage, { lastUrl } = {}) {
@@ -200,14 +339,7 @@ function createWebViewFactory({ authManager, onViewEvent } = {}) {
     const isNew = !view;
     if (isNew) {
       view = new BrowserView({
-        webPreferences: {
-          partition,
-          preload: WEBVIEW_PRELOAD,
-          contextIsolation: true,
-          nodeIntegration: false,
-          // 分区会话 + 页内注入需要；壳窗口已 sandbox:true，见 docs/adr/0001
-          sandbox: false
-        }
+        webPreferences: viewPrefs(partition)
       });
       try { view.setBackgroundColor(VIEW_BG); } catch (e) {}
     }
@@ -227,23 +359,30 @@ function createWebViewFactory({ authManager, onViewEvent } = {}) {
     return view;
   }
 
-  // 保活模式（V1.10：全页面常驻，不再限制数量）
+  // 保活：钉住的页不参与 LRU 淘汰；关闭钉住后按上限回收
   function setKeepAlive(roomId, subPage, enabled) {
-    const key = `${roomId}_${subPage}`;
+    const key = pageKey(roomId, subPage);
     if (enabled) {
+      pinnedKeys.add(key);
       if (currentView && currentMeta && currentMeta.roomId === roomId && currentMeta.subPage === subPage) {
         keptAliveViews.set(key, { view: currentView, meta: { roomId, subPage } });
+        touchLru(key);
       } else if (!keptAliveViews.has(key)) {
         const v = createView(roomId, subPage);
         hideView(v);
         keptAliveViews.set(key, { view: v, meta: { roomId, subPage } });
+        touchLru(key);
       }
       return { ok: true };
     } else {
+      pinnedKeys.delete(key);
       if (keptAliveViews.has(key)) {
         const { view } = keptAliveViews.get(key);
-        keptAliveViews.delete(key);
-        if (!(currentView === view)) destroyView(view);
+        if (!(currentView === view)) {
+          keptAliveViews.delete(key);
+          dropLru(key);
+          destroyView(view);
+        }
       }
       return { ok: true };
     }
@@ -251,8 +390,12 @@ function createWebViewFactory({ authManager, onViewEvent } = {}) {
 
   /** 后台预加载：创建并加载目标页面，置于屏幕外，切换时直接使用 */
   function preloadView(roomId, subPage) {
-    const key = `${roomId}_${subPage}`;
+    const key = pageKey(roomId, subPage);
     if (keptAliveViews.has(key) || preloadedViews.has(key)) return; // 已有无需重复
+    if (keptAliveViews.size >= keepAliveCap()) {
+      debugLog.log(`[WF] preloadView SKIP over cap roomId=${roomId} subPage=${subPage}`);
+      return;
+    }
     if (subPage === 'daping') {
       const room = config.liveRooms.find(r => r.id === roomId);
       if (!shouldPreloadDaping(room)) {
@@ -260,6 +403,7 @@ function createWebViewFactory({ authManager, onViewEvent } = {}) {
         return;
       }
     }
+    [...preloadedViews.values()].forEach((v) => destroyView(v));
     const view = createView(roomId, subPage);
     hideView(view);
     preloadedViews.set(key, view);
@@ -268,17 +412,18 @@ function createWebViewFactory({ authManager, onViewEvent } = {}) {
   /** 切页前把当前视图收入保活（不在此 hide：仍挂在窗口上时 hide 会造成黑屏闪一下） */
   function parkCurrentView(nextKey) {
     if (!currentView || !currentMeta) return;
-    const oldKey = `${currentMeta.roomId}_${currentMeta.subPage}`;
+    const oldKey = pageKey(currentMeta.roomId, currentMeta.subPage);
     if (oldKey === nextKey) return;
     const existing = keptAliveViews.get(oldKey);
     if (existing && existing.view !== currentView) {
       try { hideView(existing.view); } catch (e) {}
     }
     keptAliveViews.set(oldKey, { view: currentView, meta: { roomId: currentMeta.roomId, subPage: currentMeta.subPage } });
+    touchLru(oldKey);
   }
 
   function showView(roomId, subPage, { keepAlive = false, lastUrl = '' } = {}) {
-    const key = `${roomId}_${subPage}`;
+    const key = pageKey(roomId, subPage);
     let target;
     let branch = 'UNKNOWN';
 
@@ -329,11 +474,14 @@ function createWebViewFactory({ authManager, onViewEvent } = {}) {
       branch = 'NEW';
       target = createView(roomId, subPage, { lastUrl });
     }
-    // 目标一律登记保活，保证下次切回不重建、历史可后退
+    // 目标一律登记保活，保证下次切回不重建、历史可后退（超出上限由 trimIdleViews 回收）
     keptAliveViews.set(key, { view: target, meta: { roomId, subPage } });
+    touchLru(key);
+    if (keepAlive) pinnedKeys.add(key);
     debugLog.log(`[WF] showView branch=${branch} roomId=${roomId} subPage=${subPage} lastUrl="${lastUrl}" keepAlive=${keepAlive}`);
     currentView = target;
     currentMeta = { roomId, subPage, keepAlive };
+    prepareVisibleView(target);
     return target;
   }
 
@@ -355,11 +503,12 @@ function createWebViewFactory({ authManager, onViewEvent } = {}) {
   // V1.38：后台专用 —— 不改 currentView / 不隐藏用户当前视图
   // 复用 keepAlive 视图但不会主动导航（避免 pushState 副作用污染用户界面）
   function getOrCreateHiddenView(roomId, subPage) {
-    const key = `${roomId}_${subPage}`;
+    const key = pageKey(roomId, subPage);
     let view = keptAliveViews.get(key)?.view;
     if (!view || view.webContents.isDestroyed()) {
       view = createView(roomId, subPage);
       keptAliveViews.set(key, { view, meta: { roomId, subPage } });
+      touchLru(key);
     }
     // 若正是用户当前视图，切勿藏到屏外
     if (!(currentView && view === currentView)) {
@@ -372,7 +521,7 @@ function createWebViewFactory({ authManager, onViewEvent } = {}) {
    * 后台抓取专用视图：与 UI 保活隔离，同分区共享登录 cookie，但绝不替换用户大屏实例。
    */
   function getOrCreateScrapeView(roomId, subPage) {
-    const key = `${roomId}_${subPage}`;
+    const key = pageKey(roomId, subPage);
     let view = scrapeViews.get(key);
     if (view && !view.webContents.isDestroyed()) {
       hideView(view);
@@ -381,14 +530,7 @@ function createWebViewFactory({ authManager, onViewEvent } = {}) {
     const partition = partitionName(roomId, subPage);
     ensurePartitionGuarded(partition);
     view = new BrowserView({
-      webPreferences: {
-        partition,
-        preload: WEBVIEW_PRELOAD,
-        contextIsolation: true,
-        nodeIntegration: false,
-        // 后台抓取视图同样需要分区会话；见 docs/adr/0001
-        sandbox: false
-      }
+      webPreferences: viewPrefs(partition)
     });
     try { view.setBackgroundColor(VIEW_BG); } catch (e) {}
     // 不 register 到 UI meta / 不 bind 完整 UI 事件，避免 lastUrl 被后台加载污染
@@ -407,11 +549,46 @@ function createWebViewFactory({ authManager, onViewEvent } = {}) {
     return view;
   }
 
+  function destroyRoomViews(roomId) {
+    const prefix = `${roomId}_`;
+    [...keptAliveViews.keys()].forEach((key) => {
+      if (!key.startsWith(prefix)) return;
+      const entry = keptAliveViews.get(key);
+      keptAliveViews.delete(key);
+      dropLru(key);
+      pinnedKeys.delete(key);
+      if (entry && entry.view && entry.view !== currentView) destroyView(entry.view);
+    });
+    [...preloadedViews.keys()].forEach((key) => {
+      if (!key.startsWith(prefix)) return;
+      destroyView(preloadedViews.get(key));
+    });
+  }
+
+  function dispose() {
+    const all = new Set();
+    keptAliveViews.forEach((e) => { if (e && e.view) all.add(e.view); });
+    preloadedViews.forEach((v) => all.add(v));
+    scrapeViews.forEach((v) => all.add(v));
+    viewPool.forEach((list) => (list || []).forEach((v) => all.add(v)));
+    if (currentView) all.add(currentView);
+    all.forEach((v) => destroyView(v));
+    keptAliveViews.clear();
+    preloadedViews.clear();
+    scrapeViews.clear();
+    viewPool.clear();
+    pinnedKeys.clear();
+    lruOldestFirst.length = 0;
+    currentView = null;
+    currentMeta = null;
+  }
+
   return {
     createView, showView, setKeepAlive, setBounds,
     getCurrentView, getKeepAliveCount, destroyView, hideView,
     registerViewMeta, preloadView, getRoomMeta, getOrCreateHiddenView,
-    getOrCreateScrapeView
+    getOrCreateScrapeView, findView, releaseEphemeralView, trimIdleViews,
+    destroyRoomViews, dispose
   };
 }
 

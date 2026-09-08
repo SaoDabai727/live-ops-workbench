@@ -164,6 +164,13 @@ function syncSubPagesFromBundle(srcDir, userDir) {
       user.subPageOrder = normalized;
       changed = true;
     }
+    // 内存策略：覆盖旧的「全量保活 / 预加载下一房间」以免升级后仍占满内存
+    ['keepAliveMax', 'viewPoolSize', 'preloadDelayMs'].forEach((k) => {
+      if (typeof bundled[k] === 'number' && user[k] !== bundled[k]) {
+        user[k] = bundled[k];
+        changed = true;
+      }
+    });
     if (changed) saveJson(destPath, user);
   } catch (e) {}
 }
@@ -269,9 +276,9 @@ const config = {
   layout: subCfg.layout || { sidebarWidth: 148, toolbarHeight: 46, tabBarHeight: 40 },
   urlWhitelist: subCfg.urlWhitelist || [],
   authCallbackSchemes: subCfg.authCallbackSchemes || ['myapp://callback'],
-  keepAliveMax: subCfg.keepAliveMax || 2,
-  viewPoolSize: subCfg.viewPoolSize || 2,
-  preloadDelayMs: subCfg.preloadDelayMs || 5000,
+  keepAliveMax: Number.isFinite(subCfg.keepAliveMax) ? subCfg.keepAliveMax : 3,
+  viewPoolSize: Number.isFinite(subCfg.viewPoolSize) ? subCfg.viewPoolSize : 0,
+  preloadDelayMs: Number.isFinite(subCfg.preloadDelayMs) ? subCfg.preloadDelayMs : 0,
   tokenExchangeEndpoint: subCfg.tokenExchangeEndpoint || '',
   kpiPatterns: kpiCfg || {}
 };

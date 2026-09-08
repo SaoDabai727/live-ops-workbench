@@ -74,6 +74,34 @@ function simulateShowViewBookkeeping(state, roomId, subPage, mode) {
   return { branch, prevKey, nextKey: key };
 }
 
+/**
+ * LRU 保活淘汰：始终保留 current + pinned，再从最近使用的 key 补齐到 max。
+ * max 含当前页。pinned + current 超过 max 时仍不淘汰 pinned。
+ * @param {object} opts
+ * @param {string[]} opts.lruOldestFirst
+ * @param {string|null} opts.currentKey
+ * @param {Iterable<string>} [opts.pinnedKeys]
+ * @param {number} opts.max
+ * @returns {{ keepKeys: string[], evictKeys: string[] }}
+ */
+function pickKeepAliveEvictions({ lruOldestFirst, currentKey, pinnedKeys, max }) {
+  const order = Array.isArray(lruOldestFirst) ? lruOldestFirst.filter(Boolean) : [];
+  const cap = Math.max(1, Number(max) || 1);
+  const keep = new Set();
+  if (currentKey) keep.add(currentKey);
+  if (pinnedKeys) {
+    for (const k of pinnedKeys) {
+      if (k) keep.add(k);
+    }
+  }
+  for (let i = order.length - 1; i >= 0; i--) {
+    if (keep.size >= cap) break;
+    keep.add(order[i]);
+  }
+  const evictKeys = order.filter((k) => !keep.has(k));
+  return { keepKeys: [...keep], evictKeys };
+}
+
 /** 预加载页是否应再 loadURL（同 URL 再 load 会清历史并黑屏） */
 function shouldReloadPreloaded(lastUrl, currentUrl) {
   if (!lastUrl || lastUrl === 'about:blank') return false;
@@ -95,6 +123,7 @@ module.exports = {
   resolveShowBranch,
   assertKeepAliveInvariants,
   simulateShowViewBookkeeping,
+  pickKeepAliveEvictions,
   shouldReloadPreloaded,
   normalizeUrlForCompare
 };

@@ -335,6 +335,7 @@ function createWindowManager({ mainWindow }) {
     // 下一帧再同步，适配 maximize / DPI
     setTimeout(applyViewBounds, 0);
     setTimeout(applyViewBounds, 100);
+    if (factory.trimIdleViews) factory.trimIdleViews();
     refresh.start(view, subPage);
     // 私信页：进入时即尝试启动后台 WebSocket（不等 OAuth 回调）
     if (subPage === 'privateMsg') {
@@ -347,13 +348,14 @@ function createWindowManager({ mainWindow }) {
     schedulePreload(roomId, subPage);
   }
 
-  // —— 后台预加载：停留当前页面 5 秒后，预测下一直播间，提前加载 ——
+  // —— 后台预加载：默认关闭（会多占一整页 Chromium）；preloadDelayMs>0 时才启用 ——
   let preloadTimer = null;
   function schedulePreload(roomId, subPage) {
     if (preloadTimer) { clearTimeout(preloadTimer); preloadTimer = null; }
+    const delay = Number(config.preloadDelayMs) || 0;
+    if (delay <= 0) return;
     preloadTimer = setTimeout(() => {
       preloadTimer = null;
-      // 预测策略：下一个直播间（成环形）
       const idx = config.liveRooms.findIndex(r => r.id === roomId);
       if (idx >= 0) {
         const nextIdx = (idx + 1) % config.liveRooms.length;
@@ -362,7 +364,7 @@ function createWindowManager({ mainWindow }) {
           factory.preloadView(nextRoom.id, subPage);
         }
       }
-    }, 5000);
+    }, delay);
   }
 
   let registered = false;
@@ -698,6 +700,7 @@ function createWindowManager({ mainWindow }) {
           oldRoomIds.forEach(id => {
             if (!newRoomIds.has(id)) {
               bg.stopPrivateMsgService(id);
+              if (factory.destroyRoomViews) factory.destroyRoomViews(id);
               Object.keys(config.subPages).forEach(sp => {
                 keepAliveSet.delete(`${id}_${sp}`);
               });
@@ -761,8 +764,10 @@ function createWindowManager({ mainWindow }) {
 
   function dispose() {
     debugLog.log('[WM] dispose');
+    if (preloadTimer) { clearTimeout(preloadTimer); preloadTimer = null; }
     if (bg && bg.dispose) bg.dispose();
-    Object.keys(keepAliveSet).forEach(k => keepAliveSet.delete(k));
+    keepAliveSet.clear();
+    if (factory && factory.dispose) factory.dispose();
   }
 
   return { init, appState, dispose, syncLayout };
